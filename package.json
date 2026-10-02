@@ -1,0 +1,15 @@
+{
+  "name": "ddfs-motion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DDFS · Capgemini Invent – 15s Motion-Graphics Team-Intro (Canvas + Web Audio, Export via Playwright + ffmpeg)",
+  "type": "module",
+  "scripts": {
+    "render": "node motion/render.mjs",
+    "render:draft": "node motion/render.mjs --fps 30 --crf 24 --out output/DDFS_Team-Intro_draft.mp4",
+    "preview": "npx --yes http-server motion -p 8080 -c-1 -o /ddfs-motion.html"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
