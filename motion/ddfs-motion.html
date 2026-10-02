@@ -12,13 +12,13 @@
   @font-face { font-family: "Ubuntu Mono"; font-weight: 400; src: url("assets/fonts/ubuntu-mono-latin-400-normal.woff2") format("woff2"); }
   @font-face { font-family: "Ubuntu Mono"; font-weight: 700; src: url("assets/fonts/ubuntu-mono-latin-700-normal.woff2") format("woff2"); }
 
-  :root { --bg: #04081a; --fg: #e8eef8; --accent: #12abdb; }
+  :root { --ar: 16 / 9; --bg: #04081a; --fg: #e8eef8; --accent: #12abdb; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Ubuntu", system-ui, sans-serif; }
   body.preview { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; box-sizing: border-box; }
   canvas { display: block; }
-  body.preview canvas { width: min(100%, calc((100vh - 120px) * 16 / 9)); height: auto; aspect-ratio: 16 / 9; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  body.preview canvas { width: min(100%, calc((100vh - 120px) * var(--ar))); height: auto; aspect-ratio: var(--ar); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
   body.render { overflow: hidden; }
-  .controls { display: flex; align-items: center; gap: 12px; width: min(100%, calc((100vh - 120px) * 16 / 9)); }
+  .controls { display: flex; align-items: center; gap: 12px; width: min(100%, calc((100vh - 120px) * var(--ar))); }
   .controls button { background: var(--accent); color: #04081a; border: 0; border-radius: 999px; padding: 10px 20px; font: 500 15px "Ubuntu", sans-serif; cursor: pointer; }
   .controls input { flex: 1; accent-color: var(--accent); }
   .controls span { font: 400 14px "Ubuntu Mono", monospace; min-width: 64px; text-align: right; opacity: .8; }
@@ -41,7 +41,9 @@
    aus denselben Cue-Zeiten synthetisiert. render.mjs exportiert beides.
    ===================================================================== */
 
-const W = 1920, H = 1080, FPS = 60;
+// Format: Querformat 16:9 (Standard) oder ?format=vertical -> Hochformat 4:5 für LinkedIn
+const V = new URLSearchParams(location.search).get("format") === "vertical";
+const W = V ? 1080 : 1920, H = V ? 1350 : 1080, FPS = 60;
 const DESIGN = 15;   // Länge der Design-Timeline (alle Szenen-Zeiten unten)
 const DURATION = 24; // reale Laufzeit des Videos
 /* Zeit-Remap: [real, design]-Stützpunkte. Schnitte landen real auf dem 0,5-s-Beat-Raster,
@@ -60,7 +62,7 @@ const BPM = 120, BEAT = 60 / BPM; // Schnitte liegen auf dem Beat-Raster (0,5 s)
 
 // ---------------------------------------------------------------- Inhalte
 const CONTENT = {
-  team: { size: 26, leads: ["Marcel Walter", "André Kühn"] },
+  team: { size: 26, leads: ["Marcel Walther", "André Kühn"] },
   competencies: ["Data", "Insurance & Banking", "AI"],
   tools: ["n8n", "Otera", "Claude"],
   // Optional: offizielle (weiße/monochrome) Logos unter assets/logos/ ablegen,
@@ -87,6 +89,14 @@ const C = {
   ink: "#0B1A3A",
   paper: "#F3F6FA",
   white: "#FFFFFF",
+};
+
+// ---------------------------------------------------------------- Layout je Format
+const LY = {
+  introCY: V ? 600 : 500,              // Mittelpunkt des DDFS-Logos im Intro
+  endLineY: V ? 846 : 668,             // Trennlinie der Endcard (Ziel des Kunden-"Squeeze")
+  team: V ? { ox: 540, oy: 850, s: .78 } : { ox: 1290, oy: 560, s: 1 },   // Netzwerk-Platzierung
+  textX: V ? 90 : 160,                 // linker Textrand
 };
 
 // ---------------------------------------------------------------- Timeline (Sekunden)
@@ -367,12 +377,12 @@ function iconSpark(ctx, x, y, s, rot = 0) { // 4-zackiger Stern
 
 // ================================================================= SZENEN
 // --- A · Intro: Scan-Linie, Datenfeld, DDFS-Decode, Impact
-const DOTS = (() => { const r = mulberry32(7), a = []; for (let gx = 0; gx < 49; gx++) for (let gy = 0; gy < 28; gy++) a.push([gx * 40 + 0, gy * 40 + 0, r()]); return a; })();
+const DOTS = (() => { const r = mulberry32(7), a = []; for (let gx = 0; gx <= W / 40; gx++) for (let gy = 0; gy <= H / 40; gy++) a.push([gx * 40 + 0, gy * 40 + 0, r()]); return a; })();
 const GLYPHS = "01ABCDEFGHJKLMNPQRSTUVWXYZ#%&$<>/";
 
 function sceneIntro(ctx, t) {
   bgDark(ctx, t, { ga: .25 + .25 * ease(t, .9, 1.3), pa: .25 });
-  const cx = W / 2, cy = 500;
+  const cx = W / 2, cy = LY.introCY;
 
   // Datenpunkte: radiale Welle ab 0,4 s
   const wave = ease(t, .35, 1.4, E.outCubic) * 1300;
@@ -391,7 +401,7 @@ function sceneIntro(ctx, t) {
 
   // Scan-Linie wächst, teilt sich in zwei Klammern
   const lw = ease(t, .05, .5) * 1500;
-  const open = ease(t, .45, .85, E.outExpo) * 160;
+  const open = ease(t, .45, .85, E.outExpo) * (V ? 140 : 160);
   ctx.save();
   for (const sgn of [-1, 1]) {
     const y = cy + sgn * open;
@@ -404,17 +414,18 @@ function sceneIntro(ctx, t) {
   // Mono-Annotationen an den Klammern
   const la = ease(t, 1.05, 1.35);
   if (la > 0) {
-    ctx.font = font(400, 20, "Ubuntu Mono"); setLS(ctx, 4);
+    ctx.font = font(400, V ? 18 : 20, "Ubuntu Mono"); setLS(ctx, 4);
     ctx.fillStyle = rgba(C.vibrant, .9 * la);
-    ctx.textAlign = "left"; ctx.fillText("// DATA × AI", cx - 740, cy - open - 16);
-    ctx.textAlign = "right"; ctx.fillText("BANKING · INSURANCE //", cx + 740, cy + open + 32);
+    const ax = V ? W / 2 - 70 : 740;
+    ctx.textAlign = "left"; ctx.fillText("// DATA × AI", cx - ax, cy - open - 16);
+    ctx.textAlign = "right"; ctx.fillText("BANKING · INSURANCE //", cx + ax, cy + open + 32);
     ctx.textAlign = "left";
   }
   ctx.restore();
 
   // DDFS Decode innerhalb der Klammern
   const letters = ["D", "D", "F", "S"], locks = [.62, .74, .86, 1.0];
-  const F = font(700, 300), ls = 18;
+  const FS = V ? 250 : 300, F = font(700, FS), ls = V ? 14 : 18;
   ctx.save();
   ctx.beginPath(); ctx.rect(0, cy - open, W, open * 2); ctx.clip();
   const punch = 1 + .07 * (1 - ease(t, 1.0, 1.35, E.outCubic)) * (t >= 1.0 ? 1 : 0);
@@ -429,7 +440,7 @@ function sceneIntro(ctx, t) {
     if (t >= appear) {
       if (t < locks[i]) {
         const g = GLYPHS[Math.floor(hash(Math.floor(t * 30) * 13 + i * 101) * GLYPHS.length)];
-        ctx.save(); ctx.font = font(700, 300, "Ubuntu Mono"); setLS(ctx, 0); ctx.textAlign = "center";
+        ctx.save(); ctx.font = font(700, FS, "Ubuntu Mono"); setLS(ctx, 0); ctx.textAlign = "center";
         ctx.fillStyle = rgba(C.vibrant, .55 + .45 * hash(Math.floor(t * 60) + i));
         ctx.fillText(g, x + wch / 2, cy + 10);
         ctx.restore();
@@ -462,8 +473,8 @@ function sceneIntro(ctx, t) {
   }
 
   // Untertitel
-  kinetic(ctx, "Data-Driven Financial Services", cx, 762, t, 1.12, { f: font(300, 46), ls: 6, align: "center", stagger: .012, dur: .45 });
-  kinetic(ctx, "CAPGEMINI INVENT", cx, 268, t, 1.2, { f: font(500, 22, "Ubuntu Mono"), ls: 10, align: "center", stagger: .015, dur: .4, color: C.vibrant });
+  kinetic(ctx, "Data-Driven Financial Services", cx, cy + (V ? 240 : 262), t, 1.12, { f: font(300, V ? 40 : 46), ls: V ? 4 : 6, align: "center", stagger: .012, dur: .45 });
+  kinetic(ctx, "CAPGEMINI INVENT", cx, cy - (V ? 210 : 232), t, 1.2, { f: font(500, 22, "Ubuntu Mono"), ls: 10, align: "center", stagger: .015, dur: .4, color: C.vibrant });
 }
 
 // --- B · Team: 26 Knoten, zwei Leads
@@ -496,10 +507,14 @@ const TEAM = (() => {
   return { nodes, edges, cx, cy };
 })();
 
+// Netzwerk-Koordinaten (Design-Raum) -> Bildschirm
+const teamXY = n => [LY.team.ox + (n.x - TEAM.cx) * LY.team.s, LY.team.oy + (n.y - TEAM.cy) * LY.team.s];
 function sceneTeam(ctx, t) {
-  bgDark(ctx, t, { gx: TEAM.cx, gy: TEAM.cy, ga: .35, pa: .3 });
+  bgDark(ctx, t, { gx: LY.team.ox, gy: LY.team.oy, ga: .35, pa: .3 });
   const zoom = 1 + (t - T.team) * .025;
+  const ts = 1 / LY.team.s; // Schrift im skalierten Netzwerk lesbar halten
   ctx.save();
+  ctx.translate(LY.team.ox, LY.team.oy); ctx.scale(LY.team.s, LY.team.s); ctx.translate(-TEAM.cx, -TEAM.cy);
   ctx.translate(TEAM.cx, TEAM.cy); ctx.scale(zoom, zoom); ctx.translate(-TEAM.cx, -TEAM.cy);
   const { nodes, edges } = TEAM;
   // Kanten
@@ -553,30 +568,35 @@ function sceneTeam(ctx, t) {
     strokeProgress(ctx, [[n.x + dir * 18 * .7, n.y + (i === 0 ? -1 : 1) * 18 * .7], [ex, ey], [lx, ey]], p1);
     const tx = i === 0 ? lx - 12 : lx + 12;
     const align = i === 0 ? "right" : "left";
-    kinetic(ctx, "LEAD", tx, ey - 22, t, leadT + .2 + i * .08, { f: font(700, 18, "Ubuntu Mono"), ls: 6, align, color: C.vibrant, stagger: .02, dur: .35 });
-    kinetic(ctx, name, tx, ey + 18, t, leadT + .24 + i * .08, { f: font(500, 38), align, stagger: .014, dur: .4 });
+    kinetic(ctx, "LEAD", tx, ey - 22 * ts, t, leadT + .2 + i * .08, { f: font(700, 18 * ts, "Ubuntu Mono"), ls: 6 * ts, align, color: C.vibrant, stagger: .02, dur: .35 });
+    kinetic(ctx, name, tx, ey + 18 * ts, t, leadT + .24 + i * .08, { f: font(500, 38 * ts), align, stagger: .014, dur: .4 });
   });
   ctx.restore();
 
   // Linke Typo: 26 + Köpfe. Ein Team.
   const shown = nodes.filter(n => t >= n.t).length;
   const p = ease(t, T.team + .02, T.team + .4);
+  // Hochformat: Zahl und Claim nebeneinander oben, Querformat: untereinander links
+  const L2 = V ? { nx: 90, ny: 390, ns: 240, clip: [80, 130, 420, 300], tx: 410, t1: 292, t2: 372, ts: 70 }
+               : { nx: 160, ny: 560, ns: 300, clip: [150, 260, 700, 330], tx: 168, t1: 680, t2: 770, ts: 76 };
   ctx.save();
-  ctx.beginPath(); ctx.rect(150, 260, 700, 330); ctx.clip();
-  ctx.font = font(700, 300); setLS(ctx, -6); ctx.textBaseline = "alphabetic";
-  const gr = ctx.createLinearGradient(160, 300, 640, 560);
+  ctx.beginPath(); ctx.rect(...L2.clip); ctx.clip();
+  ctx.font = font(700, L2.ns); setLS(ctx, -6); ctx.textBaseline = "alphabetic";
+  const gr = ctx.createLinearGradient(L2.nx, L2.ny - L2.ns * .87, L2.nx + 480, L2.ny);
   gr.addColorStop(0, "#ffffff"); gr.addColorStop(1, C.vibrant);
   ctx.fillStyle = gr;
-  ctx.fillText(String(shown).padStart(2, "0"), 160, 560 + (1 - p) * 320);
+  ctx.fillText(String(shown).padStart(2, "0"), L2.nx, L2.ny + (1 - p) * L2.ns * 1.07);
   ctx.restore();
-  kinetic(ctx, "Experts.", 168, 680, t, T.team + .28, { f: font(700, 76), stagger: .02, dur: .45 });
-  kinetic(ctx, "One Team.", 168, 770, t, T.team + .4, { f: font(300, 76), stagger: .02, dur: .45, color: "#cfe3f7" });
+  kinetic(ctx, "Experts.", L2.tx, L2.t1, t, T.team + .28, { f: font(700, L2.ts), stagger: .02, dur: .45 });
+  kinetic(ctx, "One Team.", L2.tx, L2.t2, t, T.team + .4, { f: font(300, L2.ts), stagger: .02, dur: .45, color: "#cfe3f7" });
 }
 
 // --- C1 · Daten
 function sceneDaten(ctx, t) {
   const t0 = T.daten;
   bgDark(ctx, t, { base: "#050B22", gx: W * .72, gy: H * .75, ga: .5, pa: .2 });
+  ctx.save();
+  if (V) ctx.translate(-905, 300); // Chart im Hochformat unter den Text
   // Balken + Linienchart rechts
   const n = 22, bx = 960, by = 840, bw = 30, gap = 14, maxH = 520;
   const vals = [];
@@ -620,12 +640,13 @@ function sceneDaten(ctx, t) {
     ctx.fillText(`${v}`, bx + i * 160 + 10, 230 + (i % 2) * 34);
   }
   ctx.restore();
+  ctx.restore();
   textBlock(ctx, t, t0, "01", ["Data"], "#ffffff", C.vibrant);
 }
 
 function textBlock(ctx, t, t0, idx, lines, color, accent, size = 190) {
-  const x = 160;
-  const y0 = lines.length > 1 ? 470 : 600;
+  const x = LY.textX;
+  const y0 = lines.length > 1 ? (V ? 330 : 470) : (V ? 380 : 600);
   kinetic(ctx, idx + " / 03", x + 4, y0 - size + 8, t, t0 + .06, { f: font(700, 22, "Ubuntu Mono"), ls: 6, color: accent, stagger: .02, dur: .35 });
   ctx.fillStyle = accent;
   ctx.fillRect(x + 4, y0 - size + 30, ease(t, t0 + .1, t0 + .5) * 80, 4);
@@ -640,11 +661,12 @@ function sceneVersBank(ctx, t) {
   const g = ctx.createLinearGradient(0, 0, W, H);
   g.addColorStop(0, "#0080C4"); g.addColorStop(1, C.blue);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  glow(ctx, W * .78, H * .5, 800, C.vibrant, .55);
+  glow(ctx, V ? 540 : W * .78, V ? 930 : H * .5, 800, C.vibrant, .55);
   grid(ctx, t, .07, "#ffffff", 10);
   // Tech-Ringe
   const cx = 1460, cy = 560;
   ctx.save();
+  if (V) { ctx.translate(540, 930); ctx.scale(.85, .85); ctx.translate(-cx, -cy); }
   ctx.strokeStyle = rgba("#ffffff", .25); ctx.lineWidth = 1.5;
   for (let r = 0; r < 3; r++) {
     const rad = 250 + r * 70, rp = ease(t, t0 + r * .06, t0 + .6 + r * .06);
@@ -679,11 +701,12 @@ function sceneAI(ctx, t) {
   const g = ctx.createLinearGradient(0, 0, W, H);
   g.addColorStop(0, "#14051F"); g.addColorStop(1, C.purple);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  glow(ctx, 1420, 540, 900, C.vibrant, .32);
+  glow(ctx, V ? 540 : 1420, V ? 960 : 540, 900, C.vibrant, .32);
   glow(ctx, 300, 900, 700, "#7A2BB8", .35);
   grid(ctx, t, .05, "#d9b8ff", 12);
   const { nodes, edges } = NEURAL;
   ctx.save();
+  if (V) { ctx.translate(540, 960); ctx.scale(.85, .85); ctx.translate(-1410, -540); }
   ctx.lineWidth = 1.2;
   edges.forEach(([a, b], k) => {
     const A = nodes[a], B = nodes[b];
@@ -711,7 +734,7 @@ function sceneAI(ctx, t) {
   ctx.restore();
 
   // "AI" mit chromatischer Aberration beim Eintritt
-  const x = 160, y = 680, f = font(700, 340);
+  const x = LY.textX, y = V ? 560 : 680, f = font(700, 340);
   const ab = (1 - ease(t, t0, t0 + .35)) * 16;
   const p = ease(t, t0 + .02, t0 + .4);
   ctx.save();
@@ -736,7 +759,8 @@ function sceneAI(ctx, t) {
 
 // --- C4 · Triptychon-Recap
 function sceneRecap(ctx, t) {
-  const t0 = T.recap, pw = W / 3;
+  const t0 = T.recap, pw = V ? W : W / 3, ph = V ? H / 3 : H;
+  const py = V ? { num: 88, icon: 210, label: 385 } : { num: 300, icon: 470, label: 680 };
   const panels = [
     { bg: ["#050B22", "#0A1A4A"], label: "Data", icon: "bars" },
     { bg: ["#0080C4", C.blue], label: "Insurance & Banking", icon: "shield" },
@@ -745,33 +769,35 @@ function sceneRecap(ctx, t) {
   panels.forEach((pn, i) => {
     const pin = ease(t, t0 - .05 + i * .05, t0 + .25 + i * .05, E.outExpo);
     const pout = ease(t, T.tools - .06 + i * .045, T.tools + .2 + i * .045, E.inExpo);
-    const y = -H * (1 - pin) - H * pout;
     if (pin <= 0 || pout >= 1) return;
     ctx.save();
-    ctx.translate(i * pw, y);
-    const g = ctx.createLinearGradient(0, 0, 0, H);
+    // Querformat: Spalten fallen von oben ein; Hochformat: Bänder gleiten von rechts ein
+    if (V) ctx.translate(W * (1 - pin) - W * pout, i * ph);
+    else ctx.translate(i * pw, -H * (1 - pin) - H * pout);
+    const g = ctx.createLinearGradient(0, 0, 0, ph);
     g.addColorStop(0, pn.bg[0]); g.addColorStop(1, pn.bg[1]);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, pw + 1, H);
-    glow(ctx, pw / 2, H / 2, 420, C.vibrant, .25);
-    ctx.fillStyle = rgba("#ffffff", .15); ctx.fillRect(pw - 1, 0, 1, H);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, pw + 1, ph + 1);
+    glow(ctx, pw / 2, ph / 2, 420, C.vibrant, .25);
+    ctx.fillStyle = rgba("#ffffff", .15);
+    if (V) ctx.fillRect(0, ph - 1, W, 1); else ctx.fillRect(pw - 1, 0, 1, H);
     const ip = ease(t, t0 + .1 + i * .05, t0 + .45 + i * .05);
     ctx.strokeStyle = "#ffffff"; ctx.fillStyle = "#ffffff"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.lineJoin = "round";
-    if (pn.icon === "bars") { ctx.fillStyle = C.vibrant; iconBars(ctx, pw / 2, 470, 150, ip, t); }
-    if (pn.icon === "shield") iconShield(ctx, pw / 2, 470, 160, ip);
-    if (pn.icon === "neural") { ctx.lineWidth = 3; iconNeural(ctx, pw / 2, 470, 170, ip, t); }
-    kinetic(ctx, String(i + 1).padStart(2, "0"), pw / 2, 300, t, t0 + .08 + i * .05, { f: font(700, 20, "Ubuntu Mono"), ls: 6, align: "center", color: C.vibrant, stagger: .03, dur: .3 });
-    kinetic(ctx, pn.label, pw / 2, 680, t, t0 + .1 + i * .05, { f: font(700, pn.label.length > 10 ? 46 : 62), align: "center", by: "word", stagger: .05, dur: .4 });
+    if (pn.icon === "bars") { ctx.fillStyle = C.vibrant; iconBars(ctx, pw / 2, py.icon, 150, ip, t); }
+    if (pn.icon === "shield") iconShield(ctx, pw / 2, py.icon, 160, ip);
+    if (pn.icon === "neural") { ctx.lineWidth = 3; iconNeural(ctx, pw / 2, py.icon, 170, ip, t); }
+    kinetic(ctx, String(i + 1).padStart(2, "0"), pw / 2, py.num, t, t0 + .08 + i * .05, { f: font(700, 20, "Ubuntu Mono"), ls: 6, align: "center", color: C.vibrant, stagger: .03, dur: .3 });
+    kinetic(ctx, pn.label, pw / 2, py.label, t, t0 + .1 + i * .05, { f: font(700, pn.label.length > 10 && !V ? 46 : 58), align: "center", by: "word", stagger: .05, dur: .4 });
     ctx.restore();
   });
 }
 
 // --- D · Tools
-const CARD = { w: 430, h: 470, gap: 60, y: 330 };
-const cardX = i => (W - (CARD.w * 3 + CARD.gap * 2)) / 2 + i * (CARD.w + CARD.gap);
+const CARD = V ? { w: 430, h: 470, gap: 36, y: 520, sc: .7 } : { w: 430, h: 470, gap: 60, y: 330, sc: 1 };
+const cardX = i => (W - (CARD.w * CARD.sc * 3 + CARD.gap * 2)) / 2 + i * (CARD.w * CARD.sc + CARD.gap);
 function sceneTools(ctx, t) {
   const t0 = T.tools;
   bgDark(ctx, t, { ga: .35, gy: H * .1 });
-  kinetic(ctx, "Our Tool Stack", W / 2, 240, t, t0 + .05, { f: font(500, 52), align: "center", by: "word", stagger: .06, dur: .45 });
+  kinetic(ctx, "Our Tool Stack", W / 2, V ? 420 : 240, t, t0 + .05, { f: font(500, 52), align: "center", by: "word", stagger: .06, dur: .45 });
   CONTENT.tools.forEach((name, i) => {
     const ti = t0 + .08 + i * .12;
     const p = ease(t, ti, ti + .5, E.outExpo);
@@ -781,8 +807,8 @@ function sceneTools(ctx, t) {
     const fade = i === 0 ? 0 : ease(t, T.flow - .5, T.flow - .25);
     ctx.save();
     ctx.globalAlpha = p * (1 - fade);
-    ctx.translate(x + CARD.w / 2, y + CARD.h / 2);
-    const sc = .86 + .14 * p + focus * .04;
+    ctx.translate(x + CARD.w * CARD.sc / 2, y + CARD.h * CARD.sc / 2);
+    const sc = (.86 + .14 * p + focus * .04) * CARD.sc;
     ctx.scale(sc, sc);
     ctx.translate(-CARD.w / 2, -CARD.h / 2);
     // Karte (Glas)
@@ -814,13 +840,13 @@ function sceneTools(ctx, t) {
 
 // --- E · Highlight: n8n Workflow
 const FLOW = (() => {
-  const y = 610, xs = [250, 610, 970, 1330, 1690], s = 150;
+  const y = V ? 780 : 610, xs = V ? [130, 335, 540, 745, 950] : [250, 610, 970, 1330, 1690], s = V ? 112 : 150;
   const nodes = xs.map((x, i) => ({ x, y, s, label: CONTENT.flow[i], icon: ["mail", "doc", "spark", "branch", "db"][i] }));
-  const hitl = { x: 1690, y: 880, s: 104, label: "Expert", icon: "user" };
+  const hitl = V ? { x: 950, y: 1000, s: 80, label: "Expert", icon: "user" } : { x: 1690, y: 880, s: 104, label: "Expert", icon: "user" };
   const act = [9.1, 9.42, 9.74, 10.06, 10.38];
   const paths = [];
   for (let i = 0; i < 4; i++) paths.push(bezierPts(nodes[i].x + s / 2 + 8, y, nodes[i + 1].x - s / 2 - 8, y, 30, .5));
-  const branch = bezierPts(nodes[3].x + s / 2 + 8, y + 30, hitl.x - hitl.s / 2 - 8, hitl.y, 40, .5);
+  const branch = bezierPts(nodes[3].x + s / 2 + 8, y + s * .2, hitl.x - hitl.s / 2 - 8, hitl.y, 40, .5);
   return { nodes, hitl, act, paths, branch, y, s };
 })();
 function drawNodeIcon(ctx, kind, x, y, s) {
@@ -855,8 +881,9 @@ function sceneFlow(ctx, t) {
   const hand = 1 - ease(t, t0 + .1, t0 + .2, E.lin);
   if (hand > 0) {
     const e = E.inOutExpo(prog(t, 8.16, 8.5)), e2 = E.inOutExpo(prog(t, t0 - .04, t0 + .2));
-    const icx = lerp(lerp(cardX(0) + CARD.w / 2, W / 2, e), 295, e2), icy = lerp(lerp(CARD.y + CARD.h / 2, H / 2, e), 192, e2);
-    const sc = lerp(lerp(1.04, 1.45, e), .12, e2);
+    const pillX = LY.textX + 135, pillY = (V ? 250 : 210) - 18;
+    const icx = lerp(lerp(cardX(0) + CARD.w * CARD.sc / 2, W / 2, e), pillX, e2), icy = lerp(lerp(CARD.y + CARD.h * CARD.sc / 2, H / 2, e), pillY, e2);
+    const sc = lerp(lerp(1.04 * CARD.sc, 1.45 * (V ? .8 : 1), e), .12, e2);
     ctx.save();
     ctx.globalAlpha = hand;
     ctx.translate(icx, icy); ctx.scale(sc, sc);
@@ -912,7 +939,7 @@ function sceneFlow(ctx, t) {
     ctx.save();
     ctx.translate(n.x, n.y); ctx.scale(k * (1 + .08 * Math.sin(Math.PI * clamp(active * 3))), k * (1 + .08 * Math.sin(Math.PI * clamp(active * 3))));
     if (a) glow(ctx, 0, 0, n.s * 1.3, C.vibrant, .45 * (1 - .5 * clamp(active)));
-    const r = isTrigger ? n.s / 2 : 24;
+    const r = isTrigger ? n.s / 2 : n.s * .16;
     ctx.beginPath();
     if (isTrigger) { // n8n-Trigger: links rund
       ctx.moveTo(0, -n.s / 2); ctx.arcTo(n.s / 2, -n.s / 2, n.s / 2, n.s / 2, 24); ctx.arcTo(n.s / 2, n.s / 2, -n.s / 2, n.s / 2, 24);
@@ -934,7 +961,7 @@ function sceneFlow(ctx, t) {
     }
     ctx.restore();
     // Label
-    kinetic(ctx, n.label, n.x, n.y + n.s / 2 + 48, t, appear + .1, { f: font(500, 26), align: "center", stagger: .012, dur: .35, color: a ? "#ffffff" : "#b9c8e6" });
+    kinetic(ctx, n.label, n.x, n.y + n.s / 2 + (V ? 38 : 48), t, appear + .1, { f: font(500, V ? 21 : 26), align: "center", stagger: .012, dur: .35, color: a ? "#ffffff" : "#b9c8e6" });
   };
   nodes.forEach((n, i) => drawNode(n, i, t0 + .06 + i * .06, t >= act[i] ? (t - act[i]) : 0, i === 0));
   drawNode(hitl, 9, t0 + .45, t >= act[3] + .38 ? (t - act[3] - .38) : 0, false);
@@ -953,7 +980,7 @@ function sceneFlow(ctx, t) {
   ctx.restore();
 
   // Headline
-  const bx = 160, by = 210;
+  const bx = LY.textX, by = V ? 250 : 210;
   const pb = E.outBack(prog(t, t0 + .12, t0 + .42));
   if (pb > 0) {
     ctx.save(); ctx.translate(bx, by - 18); ctx.scale(pb, pb);
@@ -963,14 +990,17 @@ function sceneFlow(ctx, t) {
     ctx.fillStyle = "#04081A"; ctx.fillText(lbl, 18, 8);
     ctx.restore();
   }
-  kinetic(ctx, "Smart process automation.", bx, by + 100, t, t0 + .04, { f: font(700, 84), by: "word", stagger: .07, dur: .5 });
+  if (V) {
+    kinetic(ctx, "Smart process", bx, by + 108, t, t0 + .04, { f: font(700, 92), by: "word", stagger: .07, dur: .5 });
+    kinetic(ctx, "automation.", bx, by + 208, t, t0 + .18, { f: font(700, 92), by: "word", stagger: .07, dur: .5 });
+  } else kinetic(ctx, "Smart process automation.", bx, by + 100, t, t0 + .04, { f: font(700, 84), by: "word", stagger: .07, dur: .5 });
   // Toast
   const ta = ease(t, act[4] + .15, act[4] + .5);
   const tout = ease(t, T.clients - .25, T.clients - .05);
   if (ta > 0) {
     ctx.save();
     ctx.globalAlpha = 1 - tout;
-    const tw = 490, tx = W - tw - 90, ty = 160 + (1 - ta) * -40;
+    const tw = 490, tx = V ? (W - tw) / 2 : W - tw - 90, ty = (V ? 1140 : 160) + (1 - ta) * (V ? 40 : -40);
     roundRect(ctx, tx, ty, tw, 70, 14); ctx.fillStyle = "rgba(14,24,56,0.92)"; ctx.fill();
     ctx.strokeStyle = rgba(C.green, .6); ctx.lineWidth = 1.5; ctx.stroke();
     ctx.fillStyle = C.green; ctx.beginPath(); ctx.arc(tx + 38, ty + 35, 14, 0, Math.PI * 2); ctx.fill();
@@ -992,24 +1022,28 @@ function sceneClients(ctx, t) {
   glow(ctx, W * .1, H * 1.0, 800, C.blue, .1);
   grid(ctx, t, .045, "#0B1A3A", 6);
   ctx.save();
-  kinetic(ctx, "TRUSTED BY", W / 2, 250, t, t0 + .1, { f: font(700, 22, "Ubuntu Mono"), ls: 8, align: "center", color: C.blue, stagger: .015, dur: .35 });
+  kinetic(ctx, "TRUSTED BY", W / 2, V ? 300 : 250, t, t0 + .1, { f: font(700, 22, "Ubuntu Mono"), ls: 8, align: "center", color: C.blue, stagger: .015, dur: .35 });
   // Headline mit zweifarbigem Teil
   const hf = font(500, 50);
   const h1 = "Leading Banks & Insurers";
-  kinetic(ctx, h1, W / 2, 322, t, t0 + .14, { f: hf, align: "center", by: "word", stagger: .06, dur: .45, color: C.ink });
-  // Logo-Wand 3 + 2
-  const L = 180, R = W - 180, top = 410, rowH = 190, cw3 = (R - L) / 3, cw2 = (R - L) / 2;
+  kinetic(ctx, h1, W / 2, V ? 372 : 322, t, t0 + .14, { f: hf, align: "center", by: "word", stagger: .06, dur: .45, color: C.ink });
+  // Logo-Wand: Querformat 3 + 2, Hochformat eine Spalte
+  const L = V ? 110 : 180, R = W - L, top = V ? 470 : 410, rowH = V ? 140 : 190, cw3 = (R - L) / 3, cw2 = (R - L) / 2;
+  const rows = V ? CONTENT.clients.length : 2;
   const cells = [];
-  for (let i = 0; i < 3; i++) cells.push([L + i * cw3, top, cw3, rowH]);
-  for (let i = 0; i < 2; i++) cells.push([L + i * cw2, top + rowH, cw2, rowH]);
+  if (V) CONTENT.clients.forEach((c, i) => cells.push([L, top + i * rowH, R - L, rowH]));
+  else {
+    for (let i = 0; i < 3; i++) cells.push([L + i * cw3, top, cw3, rowH]);
+    for (let i = 0; i < 2; i++) cells.push([L + i * cw2, top + rowH, cw2, rowH]);
+  }
   // Rasterlinien
   ctx.strokeStyle = rgba(C.ink, .14); ctx.lineWidth = 1.5;
   const gp = ease(t, t0 + .1, t0 + .6, E.outCubic);
-  strokeProgress(ctx, [[L, top], [R, top]], gp);
-  strokeProgress(ctx, [[R, top + rowH], [L, top + rowH]], gp);
-  strokeProgress(ctx, [[L, top + rowH * 2], [R, top + rowH * 2]], gp);
-  [L + cw3, L + cw3 * 2].forEach(x => strokeProgress(ctx, [[x, top], [x, top + rowH]], ease(t, t0 + .3, t0 + .6)));
-  strokeProgress(ctx, [[L + cw2, top + rowH], [L + cw2, top + rowH * 2]], ease(t, t0 + .35, t0 + .65));
+  for (let r = 0; r <= rows; r++) strokeProgress(ctx, r % 2 ? [[R, top + rowH * r], [L, top + rowH * r]] : [[L, top + rowH * r], [R, top + rowH * r]], gp);
+  if (!V) {
+    [L + cw3, L + cw3 * 2].forEach(x => strokeProgress(ctx, [[x, top], [x, top + rowH]], ease(t, t0 + .3, t0 + .6)));
+    strokeProgress(ctx, [[L + cw2, top + rowH], [L + cw2, top + rowH * 2]], ease(t, t0 + .35, t0 + .65));
+  }
   CONTENT.clients.forEach((c, i) => {
     const [x, y, w, h] = cells[i];
     const ti = t0 + .22 + i * .11;
@@ -1043,7 +1077,7 @@ function sceneClients(ctx, t) {
     const sx = lerp(L - 400, R + 400, E.inOutCubic(sw));
     const g = ctx.createLinearGradient(sx - 200, 0, sx + 200, 0);
     g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(.5, "rgba(255,255,255,0.55)"); g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g; ctx.fillRect(L, top, R - L, rowH * 2);
+    ctx.fillStyle = g; ctx.fillRect(L, top, R - L, rowH * rows);
   }
   ctx.restore();
 }
@@ -1056,8 +1090,9 @@ function sceneEnd(ctx, t) {
   const push = 1.015 - Math.max(0, t - t0) * .012;
   ctx.translate(W / 2, H / 2); ctx.scale(push, push); ctx.translate(-W / 2, -H / 2);
   const breathe = .5 + .5 * Math.sin((t - t0) * 2.2);
-  glow(ctx, W / 2, 560, 1050, C.blue, .45 + .1 * breathe);
-  glow(ctx, W / 2, 600, 520, C.vibrant, .22 * ease(t, t0, t0 + .4));
+  const ly0 = LY.endLineY;
+  glow(ctx, W / 2, ly0 - 108, 1050, C.blue, .45 + .1 * breathe);
+  glow(ctx, W / 2, ly0 - 68, 520, C.vibrant, .22 * ease(t, t0, t0 + .4));
   glow(ctx, W * .15, H, 900, "#5B1F86", .3);
   grid(ctx, t, .035, "#9fc8ff", 6);
   PARTICLES.forEach(p => {
@@ -1070,23 +1105,26 @@ function sceneEnd(ctx, t) {
   const lw = ease(t, t0, t0 + .45, E.outExpo) * 820;
   const g = ctx.createLinearGradient(cx - lw / 2, 0, cx + lw / 2, 0);
   g.addColorStop(0, rgba(C.vibrant, 0)); g.addColorStop(.5, "#ffffff"); g.addColorStop(1, rgba(C.vibrant, 0));
-  ctx.fillStyle = g; ctx.fillRect(cx - lw / 2, 668, lw, 2);
+  ctx.fillStyle = g; ctx.fillRect(cx - lw / 2, ly0, lw, 2);
   // Shockwave
   const sw = prog(t, t0, t0 + .8);
   if (sw > 0 && sw < 1) {
     ctx.strokeStyle = rgba(C.vibrant, (1 - sw) * .7); ctx.lineWidth = 5 * (1 - sw) + 1;
-    ctx.beginPath(); ctx.ellipse(cx, 668, E.outCubic(sw) * 1200, E.outCubic(sw) * 380, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, ly0, E.outCubic(sw) * 1200, E.outCubic(sw) * 380, 0, 0, Math.PI * 2); ctx.stroke();
   }
-  // Claim
-  kinetic(ctx, "Your first point of contact", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1 });
+  // Claim (Hochformat: drei Zeilen, letzte Zeile mit Verlauf)
   const cf = font(700, 96), cw = measure(ctx, "for Data & AI.", cf, -1);
-  kinetic(ctx, "for Data & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1,
-    fill: (ux, uw) => { const gr = ctx.createLinearGradient(cx - cw / 2, 0, cx + cw / 2, 0); gr.addColorStop(0, "#ffffff"); gr.addColorStop(.45, C.vibrant); gr.addColorStop(1, "#7fd8f5"); return gr; } });
+  const accent = () => { const gr = ctx.createLinearGradient(cx - cw / 2, 0, cx + cw / 2, 0); gr.addColorStop(0, "#ffffff"); gr.addColorStop(.45, C.vibrant); gr.addColorStop(1, "#7fd8f5"); return gr; };
+  const claim = V ? [["Your first point", ly0 - 286], ["of contact", ly0 - 178], ["for Data & AI.", ly0 - 70]]
+                  : [["Your first point of contact", ly0 - 168], ["for Data & AI.", ly0 - 54]];
+  const drawClaim = band => claim.forEach(([txt, y], i) => kinetic(ctx, txt, cx, y, t, t0 + .06 + i * .14, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1,
+    fill: band || (i === claim.length - 1 ? accent : undefined) }));
+  drawClaim();
   // Lockup
   const lp = ease(t, t0 + .4, t0 + .8);
   ctx.save();
   ctx.globalAlpha = lp;
-  const ly = 760 + (1 - lp) * 30;
+  const ly = ly0 + 92 + (1 - lp) * 30;
   ctx.textBaseline = "alphabetic";
   const f1 = font(700, 46), f2 = font(300, 40);
   const w1 = measure(ctx, "DDFS", f1, 8), w2 = measure(ctx, "Capgemini Invent", f2, 1);
@@ -1102,8 +1140,7 @@ function sceneEnd(ctx, t) {
   if (s2 > 0 && s2 < 1) {
     const sx2 = lerp(cx - 700, cx + 700, E.inOutCubic(s2));
     const band = () => { const sg = ctx.createLinearGradient(sx2 - 140, 0, sx2 + 140, 0); sg.addColorStop(0, "rgba(255,255,255,0)"); sg.addColorStop(.5, "rgba(255,255,255,0.85)"); sg.addColorStop(1, "rgba(255,255,255,0)"); return sg; };
-    kinetic(ctx, "Your first point of contact", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
-    kinetic(ctx, "for Data & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
+    drawClaim(band);
   }
 }
 
@@ -1125,6 +1162,8 @@ const TRANS = {
 };
 
 const stage = document.getElementById("stage");
+stage.width = W; stage.height = H;
+if (V) document.documentElement.style.setProperty("--ar", "4 / 5");
 const main = stage.getContext("2d");
 const layers = [0, 1, 2].map(() => { const c = document.createElement("canvas"); c.width = W; c.height = H; return c; });
 
@@ -1143,15 +1182,15 @@ function composite(ctx, sc, layer, t) {
   // Ausgang der Intro-Szene: Zoom-Through
   if (sc.id === "intro") {
     const z = ease(t, 1.84, 2.12, E.inExpo);
-    if (z > 0) { ctx.translate(W / 2, 500); ctx.scale(1 + z * 2.2, 1 + z * 2.2); ctx.translate(-W / 2, -500); ctx.globalAlpha = 1 - z; }
+    if (z > 0) { ctx.translate(W / 2, LY.introCY); ctx.scale(1 + z * 2.2, 1 + z * 2.2); ctx.translate(-W / 2, -LY.introCY); ctx.globalAlpha = 1 - z; }
   }
   if (sc.id === "team") {
     const z = ease(t, 3.36, 3.68, E.inExpo);
-    if (z > 0) { const n = TEAM.nodes[0]; ctx.translate(n.x, n.y); ctx.scale(1 + z * 1.6, 1 + z * 1.6); ctx.translate(-n.x, -n.y); }
+    if (z > 0) { const [nx, ny] = teamXY(TEAM.nodes[0]); ctx.translate(nx, ny); ctx.scale(1 + z * 1.6, 1 + z * 1.6); ctx.translate(-nx, -ny); }
   }
   if (sc.id === "clients") {
     const s = ease(t, 13.28, 13.5, E.inExpo);
-    if (s > 0) { ctx.translate(0, 668); ctx.scale(1, Math.max(.002, 1 - s)); ctx.translate(0, -668); }
+    if (s > 0) { ctx.translate(0, LY.endLineY); ctx.scale(1, Math.max(.002, 1 - s)); ctx.translate(0, -LY.endLineY); }
   }
   if (p < 1) {
     switch (sc.tin) {
@@ -1162,9 +1201,9 @@ function composite(ctx, sc, layer, t) {
         break;
       }
       case "iris": {
-        const n = TEAM.nodes[0], z = 1 + 1.6;
+        const [nx, ny] = teamXY(TEAM.nodes[0]);
         const e = E.inOutCubic(p);
-        ctx.beginPath(); ctx.arc(n.x, n.y, 10 + e * 2300, 0, Math.PI * 2); ctx.clip();
+        ctx.beginPath(); ctx.arc(nx, ny, 10 + e * 2300, 0, Math.PI * 2); ctx.clip();
         break;
       }
       case "skew": case "skewL": {
@@ -1179,8 +1218,9 @@ function composite(ctx, sc, layer, t) {
       }
       case "card": {
         const e = E.inOutExpo(p);
-        const x = lerp(cardX(0), 0, e), y = lerp(CARD.y, 0, e), w = lerp(CARD.w * 1.04, W, e), h = lerp(CARD.h * 1.04, H, e);
-        roundRect(ctx, x - (1 - e) * CARD.w * .02, y - (1 - e) * CARD.h * .02, w, h, lerp(28, 0, e)); ctx.clip();
+        const cw = CARD.w * CARD.sc, ch = CARD.h * CARD.sc;
+        const x = lerp(cardX(0), 0, e), y = lerp(CARD.y, 0, e), w = lerp(cw * 1.04, W, e), h = lerp(ch * 1.04, H, e);
+        roundRect(ctx, x - (1 - e) * cw * .02, y - (1 - e) * ch * .02, w, h, lerp(28 * CARD.sc, 0, e)); ctx.clip();
         ctx.globalAlpha = clamp(p * 4);
         break;
       }
@@ -1222,12 +1262,12 @@ function transitionAccents(ctx, t) {
   // Iris-Ring (Team -> Daten)
   const ip = prog(t, 3.38, 3.38 + TRANS.iris.d);
   if (ip > 0 && ip < 1) {
-    const n = TEAM.nodes[0], r = 10 + E.inOutCubic(ip) * 2300;
+    const [nx, ny] = teamXY(TEAM.nodes[0]), r = 10 + E.inOutCubic(ip) * 2300;
     ctx.save();
     ctx.strokeStyle = C.vibrant; ctx.lineWidth = 3 + 9 * (1 - ip);
-    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(nx, ny, r, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = rgba("#ffffff", .5 * (1 - ip)); ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(n.x, n.y, r + 22, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(nx, ny, r + 22, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
   // Zoom-Streaks beim Intro-Ausgang
@@ -1240,7 +1280,7 @@ function transitionAccents(ctx, t) {
       const d = d0 + E.inCubic(z) * 1400;
       ctx.strokeStyle = rgba(C.vibrant, .5 * Math.sin(Math.PI * z) * r());
       ctx.lineWidth = 1 + r() * 2;
-      ctx.beginPath(); ctx.moveTo(W / 2 + Math.cos(a) * d, 500 + Math.sin(a) * d); ctx.lineTo(W / 2 + Math.cos(a) * (d + len * z), 500 + Math.sin(a) * (d + len * z)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W / 2 + Math.cos(a) * d, LY.introCY + Math.sin(a) * d); ctx.lineTo(W / 2 + Math.cos(a) * (d + len * z), LY.introCY + Math.sin(a) * (d + len * z)); ctx.stroke();
     }
     ctx.restore();
   }
@@ -1304,7 +1344,8 @@ function post(ctx, t, real) {
   }
   // Vignette
   const light = t >= 11.55 && t < 13.3;
-  const v = ctx.createRadialGradient(W / 2, H / 2, H * .62, W / 2, H / 2, H * 1.1);
+  const hd = Math.hypot(W, H) / 2;
+  const v = ctx.createRadialGradient(W / 2, H / 2, hd * .6, W / 2, H / 2, hd * 1.08);
   v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, `rgba(2,4,16,${light ? .1 : .38})`);
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   // Filmkorn

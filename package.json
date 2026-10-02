@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "render": "node motion/render.mjs",
+    "render:vertical": "node motion/render.mjs --format vertical",
     "render:draft": "node motion/render.mjs --fps 30 --crf 24 --out output/DDFS_Team-Intro_draft.mp4",
     "preview": "npx --yes http-server motion -p 8080 -c-1 -o /ddfs-motion.html"
   },

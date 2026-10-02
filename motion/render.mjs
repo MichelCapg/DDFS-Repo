@@ -15,8 +15,9 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
 }, []));
 const FPS = +(args.fps || 60);
 const CRF = String(args.crf || 18);
-const OUT = resolve(args.out || join(ROOT, "..", "output", "DDFS_Team-Intro_24s.mp4"));
-const TMP = resolve(ROOT, "..", ".render-tmp");
+const FORMAT = args.format === "vertical" ? "vertical" : "landscape"; // --format vertical -> 1080×1350 (4:5)
+const OUT = resolve(args.out || join(ROOT, "..", "output", FORMAT === "vertical" ? "DDFS_Team-Intro_24s_LinkedIn_4x5.mp4" : "DDFS_Team-Intro_24s.mp4"));
+const TMP = resolve(ROOT, "..", ".render-tmp-" + (args.format === "vertical" ? "vertical" : "landscape"));
 
 const MIME = { ".html": "text/html", ".woff2": "font/woff2", ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp" };
 const server = createServer(async (req, res) => {
@@ -26,7 +27,7 @@ const server = createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 await new Promise(r => server.listen(0, "127.0.0.1", r));
-const url = `http://127.0.0.1:${server.address().port}/ddfs-motion.html?render=1`;
+const url = `http://127.0.0.1:${server.address().port}/ddfs-motion.html?render=1&format=${FORMAT}`;
 
 const run = (cmd, argv, opts = {}) => new Promise((res, rej) => {
   const p = spawn(cmd, argv, { stdio: ["pipe", "pipe", "pipe"], ...opts });
@@ -38,7 +39,7 @@ const run = (cmd, argv, opts = {}) => new Promise((res, rej) => {
 });
 
 const browser = await chromium.launch({ args: ["--disable-gpu-vsync", "--force-color-profile=srgb"] });
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: FORMAT === "vertical" ? { width: 1080, height: 1350 } : { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) console.error("[page]", m.text()); });
 page.on("pageerror", e => console.error("[pageerror]", e));
 await page.goto(url);
