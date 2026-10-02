@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -28,8 +28,8 @@
 <body>
 <canvas id="stage" width="1920" height="1080"></canvas>
 <div class="controls">
-  <button id="play">▶ Abspielen</button>
-  <input id="scrub" type="range" min="0" max="15" step="0.001" value="0">
+  <button id="play">▶ Play</button>
+  <input id="scrub" type="range" min="0" max="24" step="0.001" value="0">
   <span id="time">00.00</span>
 </div>
 <script>
@@ -41,13 +41,27 @@
    aus denselben Cue-Zeiten synthetisiert. render.mjs exportiert beides.
    ===================================================================== */
 
-const W = 1920, H = 1080, DURATION = 15, FPS = 60;
+const W = 1920, H = 1080, FPS = 60;
+const DESIGN = 15;   // Länge der Design-Timeline (alle Szenen-Zeiten unten)
+const DURATION = 24; // reale Laufzeit des Videos
+/* Zeit-Remap: [real, design]-Stützpunkte. Schnitte landen real auf dem 0,5-s-Beat-Raster,
+   die Standzeiten werden gedehnt, damit Texte in Ruhe gelesen werden können. */
+const WARP = [[0, 0], [1.5, 1.0], [3.0, 2.0], [5.5, 3.5], [7.0, 4.5], [8.5, 5.5], [10.0, 6.5], [11.0, 7.0],
+  [13.0, 8.5], [17.5, 11.5], [20.5, 13.5], [21.5, 14.3], [24.0, 15.0]];
+function warpMap(x, from, to) {
+  for (let i = 1; i < WARP.length; i++) {
+    const a = WARP[i - 1], b = WARP[i];
+    if (x <= b[from] || i === WARP.length - 1) return a[to] + (b[to] - a[to]) * Math.min(1, Math.max(0, (x - a[from]) / (b[from] - a[from])));
+  }
+}
+const warp = real => warpMap(real, 0, 1);     // real -> design
+const unwarp = design => warpMap(design, 1, 0); // design -> real
 const BPM = 120, BEAT = 60 / BPM; // Schnitte liegen auf dem Beat-Raster (0,5 s)
 
 // ---------------------------------------------------------------- Inhalte
 const CONTENT = {
   team: { size: 26, leads: ["Marcel Walter", "André Kühn"] },
-  competencies: ["Daten", "Versicherung & Banking", "AI"],
+  competencies: ["Data", "Insurance & Banking", "AI"],
   tools: ["n8n", "Otera", "Claude"],
   // Optional: offizielle (weiße/monochrome) Logos unter assets/logos/ ablegen,
   // dann ersetzt das Bild die typografische Wortmarke automatisch.
@@ -58,7 +72,7 @@ const CONTENT = {
     { name: "ERGO", logo: "assets/logos/ergo.png" },
     { name: "Sparkassen-Finanzgruppe", logo: "assets/logos/sparkasse.png" },
   ],
-  flow: ["Eingang", "Extraktion", "KI-Analyse", "Entscheidung", "Kernsystem"],
+  flow: ["Intake", "Extraction", "AI Analysis", "Decision", "Core System"],
 };
 
 // ---------------------------------------------------------------- Farben (Capgemini)
@@ -393,7 +407,7 @@ function sceneIntro(ctx, t) {
     ctx.font = font(400, 20, "Ubuntu Mono"); setLS(ctx, 4);
     ctx.fillStyle = rgba(C.vibrant, .9 * la);
     ctx.textAlign = "left"; ctx.fillText("// DATA × AI", cx - 740, cy - open - 16);
-    ctx.textAlign = "right"; ctx.fillText("BANKING · VERSICHERUNG //", cx + 740, cy + open + 32);
+    ctx.textAlign = "right"; ctx.fillText("BANKING · INSURANCE //", cx + 740, cy + open + 32);
     ctx.textAlign = "left";
   }
   ctx.restore();
@@ -555,8 +569,8 @@ function sceneTeam(ctx, t) {
   ctx.fillStyle = gr;
   ctx.fillText(String(shown).padStart(2, "0"), 160, 560 + (1 - p) * 320);
   ctx.restore();
-  kinetic(ctx, "Köpfe.", 168, 680, t, T.team + .28, { f: font(700, 76), stagger: .02, dur: .45 });
-  kinetic(ctx, "Ein Team.", 168, 770, t, T.team + .4, { f: font(300, 76), stagger: .02, dur: .45, color: "#cfe3f7" });
+  kinetic(ctx, "Experts.", 168, 680, t, T.team + .28, { f: font(700, 76), stagger: .02, dur: .45 });
+  kinetic(ctx, "One Team.", 168, 770, t, T.team + .4, { f: font(300, 76), stagger: .02, dur: .45, color: "#cfe3f7" });
 }
 
 // --- C1 · Daten
@@ -606,7 +620,7 @@ function sceneDaten(ctx, t) {
     ctx.fillText(`${v}`, bx + i * 160 + 10, 230 + (i % 2) * 34);
   }
   ctx.restore();
-  textBlock(ctx, t, t0, "01", ["Daten"], "#ffffff", C.vibrant);
+  textBlock(ctx, t, t0, "01", ["Data"], "#ffffff", C.vibrant);
 }
 
 function textBlock(ctx, t, t0, idx, lines, color, accent, size = 190) {
@@ -650,7 +664,7 @@ function sceneVersBank(ctx, t) {
   iconShield(ctx, cx - 105, cy, 210, ease(t, t0 + .12, t0 + .7, E.inOutCubic));
   iconBank(ctx, cx + 120, cy + 5, 190, ease(t, t0 + .22, t0 + .8, E.inOutCubic));
   ctx.restore();
-  textBlock(ctx, t, t0, "02", ["Versicherung", "& Banking"], "#ffffff", "#ffffff", 150);
+  textBlock(ctx, t, t0, "02", ["Insurance", "& Banking"], "#ffffff", "#ffffff", 160);
 }
 
 // --- C3 · AI
@@ -724,8 +738,8 @@ function sceneAI(ctx, t) {
 function sceneRecap(ctx, t) {
   const t0 = T.recap, pw = W / 3;
   const panels = [
-    { bg: ["#050B22", "#0A1A4A"], label: "Daten", icon: "bars" },
-    { bg: ["#0080C4", C.blue], label: "Versicherung & Banking", icon: "shield" },
+    { bg: ["#050B22", "#0A1A4A"], label: "Data", icon: "bars" },
+    { bg: ["#0080C4", C.blue], label: "Insurance & Banking", icon: "shield" },
     { bg: ["#14051F", C.purple], label: "AI", icon: "neural" },
   ];
   panels.forEach((pn, i) => {
@@ -757,7 +771,7 @@ const cardX = i => (W - (CARD.w * 3 + CARD.gap * 2)) / 2 + i * (CARD.w + CARD.ga
 function sceneTools(ctx, t) {
   const t0 = T.tools;
   bgDark(ctx, t, { ga: .35, gy: H * .1 });
-  kinetic(ctx, "Unser Toolstack", W / 2, 240, t, t0 + .05, { f: font(500, 52), align: "center", by: "word", stagger: .06, dur: .45 });
+  kinetic(ctx, "Our Tool Stack", W / 2, 240, t, t0 + .05, { f: font(500, 52), align: "center", by: "word", stagger: .06, dur: .45 });
   CONTENT.tools.forEach((name, i) => {
     const ti = t0 + .08 + i * .12;
     const p = ease(t, ti, ti + .5, E.outExpo);
@@ -802,7 +816,7 @@ function sceneTools(ctx, t) {
 const FLOW = (() => {
   const y = 610, xs = [250, 610, 970, 1330, 1690], s = 150;
   const nodes = xs.map((x, i) => ({ x, y, s, label: CONTENT.flow[i], icon: ["mail", "doc", "spark", "branch", "db"][i] }));
-  const hitl = { x: 1690, y: 880, s: 104, label: "Experte", icon: "user" };
+  const hitl = { x: 1690, y: 880, s: 104, label: "Expert", icon: "user" };
   const act = [9.1, 9.42, 9.74, 10.06, 10.38];
   const paths = [];
   for (let i = 0; i < 4; i++) paths.push(bezierPts(nodes[i].x + s / 2 + 8, y, nodes[i + 1].x - s / 2 - 8, y, 30, .5));
@@ -949,20 +963,20 @@ function sceneFlow(ctx, t) {
     ctx.fillStyle = "#04081A"; ctx.fillText(lbl, 18, 8);
     ctx.restore();
   }
-  kinetic(ctx, "Prozesse smart automatisieren.", bx, by + 100, t, t0 + .04, { f: font(700, 84), by: "word", stagger: .07, dur: .5 });
+  kinetic(ctx, "Smart process automation.", bx, by + 100, t, t0 + .04, { f: font(700, 84), by: "word", stagger: .07, dur: .5 });
   // Toast
   const ta = ease(t, act[4] + .15, act[4] + .5);
   const tout = ease(t, T.clients - .25, T.clients - .05);
   if (ta > 0) {
     ctx.save();
     ctx.globalAlpha = 1 - tout;
-    const tw = 470, tx = W - tw - 90, ty = 160 + (1 - ta) * -40;
+    const tw = 490, tx = W - tw - 90, ty = 160 + (1 - ta) * -40;
     roundRect(ctx, tx, ty, tw, 70, 14); ctx.fillStyle = "rgba(14,24,56,0.92)"; ctx.fill();
     ctx.strokeStyle = rgba(C.green, .6); ctx.lineWidth = 1.5; ctx.stroke();
     ctx.fillStyle = C.green; ctx.beginPath(); ctx.arc(tx + 38, ty + 35, 14, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = "#0B1A3A"; ctx.lineWidth = 3.5; strokeProgress(ctx, [[tx + 31, ty + 35], [tx + 36, ty + 40], [tx + 45, ty + 30]], 1);
     ctx.font = font(500, 24); ctx.fillStyle = "#ffffff"; setLS(ctx, 0);
-    ctx.fillText("Workflow erfolgreich ausgeführt", tx + 68, ty + 43);
+    ctx.fillText("Workflow executed successfully", tx + 68, ty + 43);
     ctx.restore();
   }
 }
@@ -978,10 +992,10 @@ function sceneClients(ctx, t) {
   glow(ctx, W * .1, H * 1.0, 800, C.blue, .1);
   grid(ctx, t, .045, "#0B1A3A", 6);
   ctx.save();
-  kinetic(ctx, "IM EINSATZ FÜR", W / 2, 250, t, t0 + .1, { f: font(700, 22, "Ubuntu Mono"), ls: 8, align: "center", color: C.blue, stagger: .015, dur: .35 });
+  kinetic(ctx, "TRUSTED BY", W / 2, 250, t, t0 + .1, { f: font(700, 22, "Ubuntu Mono"), ls: 8, align: "center", color: C.blue, stagger: .015, dur: .35 });
   // Headline mit zweifarbigem Teil
   const hf = font(500, 50);
-  const h1 = "Banken & Versicherungen";
+  const h1 = "Leading Banks & Insurers";
   kinetic(ctx, h1, W / 2, 322, t, t0 + .14, { f: hf, align: "center", by: "word", stagger: .06, dur: .45, color: C.ink });
   // Logo-Wand 3 + 2
   const L = 180, R = W - 180, top = 410, rowH = 190, cw3 = (R - L) / 3, cw2 = (R - L) / 2;
@@ -1064,9 +1078,9 @@ function sceneEnd(ctx, t) {
     ctx.beginPath(); ctx.ellipse(cx, 668, E.outCubic(sw) * 1200, E.outCubic(sw) * 380, 0, 0, Math.PI * 2); ctx.stroke();
   }
   // Claim
-  kinetic(ctx, "Ihr erster Ansprechpartner", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1 });
-  const cf = font(700, 96), cw = measure(ctx, "für Daten & AI.", cf, -1);
-  kinetic(ctx, "für Daten & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1,
+  kinetic(ctx, "Your first point of contact", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1 });
+  const cf = font(700, 96), cw = measure(ctx, "for Data & AI.", cf, -1);
+  kinetic(ctx, "for Data & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1,
     fill: (ux, uw) => { const gr = ctx.createLinearGradient(cx - cw / 2, 0, cx + cw / 2, 0); gr.addColorStop(0, "#ffffff"); gr.addColorStop(.45, C.vibrant); gr.addColorStop(1, "#7fd8f5"); return gr; } });
   // Lockup
   const lp = ease(t, t0 + .4, t0 + .8);
@@ -1088,8 +1102,8 @@ function sceneEnd(ctx, t) {
   if (s2 > 0 && s2 < 1) {
     const sx2 = lerp(cx - 700, cx + 700, E.inOutCubic(s2));
     const band = () => { const sg = ctx.createLinearGradient(sx2 - 140, 0, sx2 + 140, 0); sg.addColorStop(0, "rgba(255,255,255,0)"); sg.addColorStop(.5, "rgba(255,255,255,0.85)"); sg.addColorStop(1, "rgba(255,255,255,0)"); return sg; };
-    kinetic(ctx, "Ihr erster Ansprechpartner", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
-    kinetic(ctx, "für Daten & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
+    kinetic(ctx, "Your first point of contact", cx, 500, t, t0 + .06, { f: font(700, 96), align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
+    kinetic(ctx, "for Data & AI.", cx, 614, t, t0 + .2, { f: cf, align: "center", by: "word", stagger: .07, dur: .55, ls: -1, fill: band });
   }
 }
 
@@ -1234,9 +1248,9 @@ function transitionAccents(ctx, t) {
 
 // ---------------------------------------------------------------- HUD & Post
 const SECTIONS = [
-  [2.0, 3.5, "TEAM"], [3.5, 7.0, "01  KOMPETENZEN"], [7.0, 8.5, "02  TOOLS"], [8.5, 11.5, "03  HIGHLIGHT"], [11.5, 13.3, "04  KUNDEN"],
+  [2.0, 3.5, "TEAM"], [3.5, 7.0, "01  EXPERTISE"], [7.0, 8.5, "02  TOOLS"], [8.5, 11.5, "03  HIGHLIGHT"], [11.5, 13.3, "04  CLIENTS"],
 ];
-function hud(ctx, t) {
+function hud(ctx, t, real) {
   const a = ease(t, 1.1, 1.5) * (1 - ease(t, 13.25, 13.45));
   if (a <= 0) return;
   const light = t >= 11.5 && t < 13.5;
@@ -1261,12 +1275,12 @@ function hud(ctx, t) {
     ctx.fillText(sec[2].slice(0, n) + (n < sec[2].length ? "_" : ""), W - m - 40, m + 4);
   }
   // Timecode + Fortschritt
-  const fr = Math.floor(t * FPS);
-  const tc = `00:${String(Math.floor(t)).padStart(2, "0")}:${String(fr % FPS).padStart(2, "0")}`;
+  const fr = Math.floor(real * FPS);
+  const tc = `00:${String(Math.floor(real)).padStart(2, "0")}:${String(fr % FPS).padStart(2, "0")}`;
   ctx.textAlign = "left"; ctx.font = font(400, 16, "Ubuntu Mono"); ctx.fillStyle = rgba(col, .45);
   ctx.fillText(tc, m + 40, H - m - 4);
   ctx.fillStyle = rgba(col, .15); ctx.fillRect(W - m - 40 - 240, H - m - 5, 240, 2);
-  ctx.fillStyle = light ? C.blue : C.vibrant; ctx.fillRect(W - m - 40 - 240, H - m - 5, 240 * (t / DURATION), 2);
+  ctx.fillStyle = light ? C.blue : C.vibrant; ctx.fillRect(W - m - 40 - 240, H - m - 5, 240 * (real / DURATION), 2);
   ctx.restore();
 }
 
@@ -1282,7 +1296,7 @@ const GRAIN = (() => {
 })();
 let grainPatterns = null;
 
-function post(ctx, t) {
+function post(ctx, t, real) {
   // Flash bei Impacts
   for (const [ti, amt] of [[T.impact1, .45], [T.end, .55], [T.ai, .25]]) {
     const f = 1 - ease(t, ti, ti + .22, E.outCubic);
@@ -1295,7 +1309,7 @@ function post(ctx, t) {
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   // Filmkorn
   if (!grainPatterns) grainPatterns = GRAIN.map(c => main.createPattern(c, "repeat"));
-  const fr = Math.floor(t * FPS / 2);
+  const fr = Math.floor(real * FPS / 2);
   ctx.save();
   ctx.globalAlpha = .035; ctx.globalCompositeOperation = "overlay";
   ctx.fillStyle = grainPatterns[fr % GRAIN.length];
@@ -1313,8 +1327,9 @@ function shake(t) {
   return [dx, dy];
 }
 
-function draw(t) {
-  t = clamp(t, 0, DURATION - 1e-6);
+function draw(real) {
+  real = clamp(real, 0, DURATION - 1e-6);
+  let t = warp(real);
   const ctx = main;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
@@ -1329,8 +1344,8 @@ function draw(t) {
   active.forEach(({ s }, k) => composite(ctx, s, drawLayer(s, t, layers[k % layers.length]), t));
   transitionAccents(ctx, t);
   ctx.restore();
-  hud(ctx, t);
-  post(ctx, t);
+  hud(ctx, t, real);
+  post(ctx, t, real);
 }
 
 // ================================================================= AUDIO (Web Audio)
@@ -1349,7 +1364,7 @@ function renderAudio(sampleRate = 48000) {
   lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .001; lim.release.value = .08;
   master.connect(comp); comp.connect(lim); lim.connect(ac.destination);
   // Ausblenden am Ende
-  master.gain.setValueAtTime(.9, 14.3); master.gain.linearRampToValueAtTime(0.0001, 15.0);
+  master.gain.setValueAtTime(.9, DURATION - .9); master.gain.linearRampToValueAtTime(0.0001, DURATION);
 
   // Hall
   const rev = ac.createConvolver();
@@ -1454,28 +1469,34 @@ function renderAudio(sampleRate = 48000) {
 
   // ----- Musikbett: 120 BPM, d-Moll (Dm – Bb – F – C)
   const N = { D2: 73.42, F2: 87.31, A2: 110, Bb1: 58.27, C2: 65.41, D3: 146.83, F3: 174.61, A3: 220, Bb2: 116.54, C3: 130.81, E3: 164.81, G3: 196, D4: 293.66, F4: 349.23, A4: 440, C4: 261.63 };
-  const prog4 = [
-    [1.0, [N.D3, N.F3, N.A3, N.C4], N.D2], [3.0, [N.Bb2, N.D3, N.F3, N.A3], N.Bb1 * 2], [5.0, [N.F3, N.A3, N.C4, N.E3 * 2], N.F2],
-    [7.0, [N.C3, N.E3, N.G3, N.D4], N.C2 * 2], [9.0, [N.D3, N.F3, N.A3, N.C4], N.D2], [11.0, [N.Bb2, N.D3, N.F3, N.A3], N.Bb1 * 2],
+  const CH = [
+    [[N.D3, N.F3, N.A3, N.C4], N.D2], [[N.Bb2, N.D3, N.F3, N.A3], N.Bb1 * 2],
+    [[N.F3, N.A3, N.C4, N.E3 * 2], N.F2], [[N.C3, N.E3, N.G3, N.D4], N.C2 * 2],
   ];
+  const beatIn = unwarp(T.impact1), finale = unwarp(T.end), drop = finale - 2 * BEAT, build = finale - 1;
   // Intro-Drone
-  chord(0, 1.0, [N.D3, N.A3], .03, 600);
-  prog4.forEach(([t0, notes, root], i) => {
-    const t1 = Math.min(t0 + 2, 13.0);
-    chord(t0, t1, notes, .022, 1300 + i * 120);
+  chord(0, beatIn, [N.D3, N.A3], .03, 600);
+  for (let i = 0, t0 = beatIn; t0 < build - 1e-6; i++, t0 += 2) {
+    const [notes, root] = CH[i % 4], t1 = Math.min(t0 + 2, build);
+    chord(t0, t1, notes, .022, 1300 + (i % 6) * 120);
     for (let b = t0; b < t1 - 1e-6; b += BEAT / 2) { if (Math.abs((b - t0) % BEAT) > 1e-6) bass(b, root, .2); }
-  });
-  // Build (13.0–13.5): C-Dur aufgelöst, dann Dm(add9) als Schlussakkord
-  chord(13.0, 13.5, [N.C3, N.E3, N.G3, N.C4], .02, 2200);
-  chord(13.5, 14.6, [N.D3, N.F3, N.A3, N.E3 * 2, N.D4], .028, 1800);
-  bass(13.5, N.D2, .35, 1.2);
-  // Drums
-  for (let b = 1.0; b < 13.0 - 1e-6; b += BEAT) {
-    if (b >= 12.5) break; // Drop vor dem Finale
-    kick(b, b === 1.0 ? 0 : .55);
-    hat(b + BEAT / 2, .09, .25);
-    if ((b * 2) % 2 === 1) hat(b + BEAT * .75, .04, -.3);
   }
+  // Build: C-Dur, dann Dm(add9) als Schlussakkord
+  chord(build, finale, [N.C3, N.E3, N.G3, N.C4], .02, 2200);
+  chord(finale, DURATION - .6, [N.D3, N.F3, N.A3, N.E3 * 2, N.D4], .028, 1800);
+  bass(finale, N.D2, .35, 1.6);
+  // Drums
+  for (let b = beatIn; b < drop - 1e-6; b += BEAT) {
+    kick(b, b === beatIn ? 0 : .55);
+    hat(b + BEAT / 2, .09, .25);
+    if (Math.round((b - beatIn) / BEAT) % 2 === 1) hat(b + BEAT * .75, .04, -.3);
+  }
+
+  // SFX werden in Design-Zeit notiert und hier auf reale Zeit umgerechnet
+  const map1 = fn => (t, ...r) => fn(unwarp(t), ...r);
+  whoosh = map1(whoosh); impact = map1(impact); tick = map1(tick); click = map1(click);
+  blip = map1(blip); pop = map1(pop); glitch = map1(glitch); shimmer = map1(shimmer);
+  const riserReal = riser; riser = (a, b, g) => riserReal(unwarp(a), unwarp(b), g);
 
   // ----- Sounddesign / SFX (an den Cues der Animation)
   // Intro
@@ -1553,7 +1574,7 @@ window.__ready = (async () => {
   await document.fonts.load(font(400, 20, "Ubuntu Mono")); await document.fonts.load(font(700, 20, "Ubuntu Mono"));
   await document.fonts.ready;
   await loadLogos();
-  draw(RENDER_MODE ? 0 : 14.99);
+  draw(RENDER_MODE ? 0 : DURATION - .01);
   return true;
 })();
 
@@ -1576,11 +1597,11 @@ if (!RENDER_MODE) {
   let actx = null, buffer = null, src = null, startAt = 0, playing = false;
   const show = t => { scrub.value = t; tl.textContent = t.toFixed(2).padStart(5, "0"); draw(t); };
   scrub.addEventListener("input", () => { stop(); show(+scrub.value); });
-  function stop() { if (src) { try { src.stop(); } catch (e) {} src = null; } playing = false; btn.textContent = "▶ Abspielen"; }
+  function stop() { if (src) { try { src.stop(); } catch (e) {} src = null; } playing = false; btn.textContent = "▶ Play"; }
   async function play() {
     actx = actx || new AudioContext();
     if (actx.state !== "running") await actx.resume();
-    btn.textContent = "… Ton wird erzeugt";
+    btn.textContent = "… generating audio";
     buffer = buffer || await renderAudio(actx.sampleRate);
     let off = +scrub.value; if (off >= DURATION - .05) off = 0;
     src = actx.createBufferSource(); src.buffer = buffer; src.connect(actx.destination);
