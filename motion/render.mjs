@@ -1,5 +1,5 @@
 // Exportiert ddfs-motion.html Frame für Frame als MP4 (H.264 + AAC).
-// Nutzung: node motion/render.mjs [--fps 60] [--crf 18] [--out output/DDFS_Team-Intro_24s.mp4]
+// Nutzung: node motion/render.mjs [--fps 60] [--crf 18] [--out output/DDFS_Team-Intro_21s.mp4]
 //          [--still 14.9 --out output/poster.png]
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
 const FPS = +(args.fps || 60);
 const CRF = String(args.crf || 18);
 const FORMAT = args.format === "vertical" ? "vertical" : "landscape"; // --format vertical -> 1080×1350 (4:5)
-const OUT = resolve(args.out || join(ROOT, "..", "output", FORMAT === "vertical" ? "DDFS_Team-Intro_24s_LinkedIn_4x5.mp4" : "DDFS_Team-Intro_24s.mp4"));
+const OUT = resolve(args.out || join(ROOT, "..", "output", FORMAT === "vertical" ? "DDFS_Team-Intro_21s_LinkedIn_4x5.mp4" : "DDFS_Team-Intro_21s.mp4"));
 const TMP = resolve(ROOT, "..", ".render-tmp-" + (args.format === "vertical" ? "vertical" : "landscape"));
 
 const MIME = { ".html": "text/html", ".woff2": "font/woff2", ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp" };

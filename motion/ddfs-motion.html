@@ -44,12 +44,12 @@
 // Format: Querformat 16:9 (Standard) oder ?format=vertical -> Hochformat 4:5 für LinkedIn
 const V = new URLSearchParams(location.search).get("format") === "vertical";
 const W = V ? 1080 : 1920, H = V ? 1350 : 1080, FPS = 60;
-const DESIGN = 15;   // Länge der Design-Timeline (alle Szenen-Zeiten unten)
-const DURATION = 24; // reale Laufzeit des Videos
+const DESIGN = 13;   // Länge der Design-Timeline (alle Szenen-Zeiten unten)
+const DURATION = 21; // reale Laufzeit des Videos
 /* Zeit-Remap: [real, design]-Stützpunkte. Schnitte landen real auf dem 0,5-s-Beat-Raster,
    die Standzeiten werden gedehnt, damit Texte in Ruhe gelesen werden können. */
 const WARP = [[0, 0], [1.5, 1.0], [3.0, 2.0], [5.5, 3.5], [7.0, 4.5], [8.5, 5.5], [10.0, 6.5], [11.0, 7.0],
-  [13.0, 8.5], [17.5, 11.5], [20.5, 13.5], [21.5, 14.3], [24.0, 15.0]];
+  [13.0, 8.5], [17.5, 11.5], [18.5, 12.3], [21.0, 13.0]];
 function warpMap(x, from, to) {
   for (let i = 1; i < WARP.length; i++) {
     const a = WARP[i - 1], b = WARP[i];
@@ -65,15 +65,6 @@ const CONTENT = {
   team: { size: 26, leads: ["Marcel Walther", "André Kühn"] },
   competencies: ["Data", "Insurance & Banking", "AI"],
   tools: ["n8n", "Otera", "Claude"],
-  // Optional: offizielle (weiße/monochrome) Logos unter assets/logos/ ablegen,
-  // dann ersetzt das Bild die typografische Wortmarke automatisch.
-  clients: [
-    { name: "LBBW", logo: "assets/logos/lbbw.png" },
-    { name: "Commerzbank", logo: "assets/logos/commerzbank.png" },
-    { name: "Allianz", logo: "assets/logos/allianz.png" },
-    { name: "ERGO", logo: "assets/logos/ergo.png" },
-    { name: "Sparkassen-Finanzgruppe", logo: "assets/logos/sparkasse.png" },
-  ],
   flow: ["Intake", "Extraction", "AI Analysis", "Decision", "Core System"],
 };
 
@@ -94,7 +85,7 @@ const C = {
 // ---------------------------------------------------------------- Layout je Format
 const LY = {
   introCY: V ? 600 : 500,              // Mittelpunkt des DDFS-Logos im Intro
-  endLineY: V ? 846 : 668,             // Trennlinie der Endcard (Ziel des Kunden-"Squeeze")
+  endLineY: V ? 846 : 668,             // Trennlinie der Endcard (Ziel des Workflow-"Squeeze")
   team: V ? { ox: 540, oy: 850, s: .78 } : { ox: 1290, oy: 560, s: 1 },   // Netzwerk-Platzierung
   textX: V ? 90 : 160,                 // linker Textrand
 };
@@ -109,8 +100,7 @@ const T = {
   recap: 6.5,
   tools: 7.0,
   flow: 8.5,
-  clients: 11.5,
-  end: 13.5,
+  end: 11.5,
 };
 
 // ---------------------------------------------------------------- Helfer
@@ -996,7 +986,7 @@ function sceneFlow(ctx, t) {
   } else kinetic(ctx, "Smart process automation.", bx, by + 100, t, t0 + .04, { f: font(700, 84), by: "word", stagger: .07, dur: .5 });
   // Toast
   const ta = ease(t, act[4] + .15, act[4] + .5);
-  const tout = ease(t, T.clients - .25, T.clients - .05);
+  const tout = 0;
   if (ta > 0) {
     ctx.save();
     ctx.globalAlpha = 1 - tout;
@@ -1009,77 +999,6 @@ function sceneFlow(ctx, t) {
     ctx.fillText("Workflow executed successfully", tx + 68, ty + 43);
     ctx.restore();
   }
-}
-
-// --- F · Kunden
-const LOGOS = {};
-function sceneClients(ctx, t) {
-  const t0 = T.clients;
-  ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
-  const push = 1 + Math.max(0, t - t0) * .014;
-  ctx.translate(W / 2, H / 2); ctx.scale(push, push); ctx.translate(-W / 2, -H / 2);
-  glow(ctx, W * .85, H * .1, 900, C.vibrant, .16);
-  glow(ctx, W * .1, H * 1.0, 800, C.blue, .1);
-  grid(ctx, t, .045, "#0B1A3A", 6);
-  ctx.save();
-  kinetic(ctx, "TRUSTED BY", W / 2, V ? 300 : 250, t, t0 + .1, { f: font(700, 22, "Ubuntu Mono"), ls: 8, align: "center", color: C.blue, stagger: .015, dur: .35 });
-  // Headline mit zweifarbigem Teil
-  const hf = font(500, 50);
-  const h1 = "Leading Banks & Insurers";
-  kinetic(ctx, h1, W / 2, V ? 372 : 322, t, t0 + .14, { f: hf, align: "center", by: "word", stagger: .06, dur: .45, color: C.ink });
-  // Logo-Wand: Querformat 3 + 2, Hochformat eine Spalte
-  const L = V ? 110 : 180, R = W - L, top = V ? 470 : 410, rowH = V ? 140 : 190, cw3 = (R - L) / 3, cw2 = (R - L) / 2;
-  const rows = V ? CONTENT.clients.length : 2;
-  const cells = [];
-  if (V) CONTENT.clients.forEach((c, i) => cells.push([L, top + i * rowH, R - L, rowH]));
-  else {
-    for (let i = 0; i < 3; i++) cells.push([L + i * cw3, top, cw3, rowH]);
-    for (let i = 0; i < 2; i++) cells.push([L + i * cw2, top + rowH, cw2, rowH]);
-  }
-  // Rasterlinien
-  ctx.strokeStyle = rgba(C.ink, .14); ctx.lineWidth = 1.5;
-  const gp = ease(t, t0 + .1, t0 + .6, E.outCubic);
-  for (let r = 0; r <= rows; r++) strokeProgress(ctx, r % 2 ? [[R, top + rowH * r], [L, top + rowH * r]] : [[L, top + rowH * r], [R, top + rowH * r]], gp);
-  if (!V) {
-    [L + cw3, L + cw3 * 2].forEach(x => strokeProgress(ctx, [[x, top], [x, top + rowH]], ease(t, t0 + .3, t0 + .6)));
-    strokeProgress(ctx, [[L + cw2, top + rowH], [L + cw2, top + rowH * 2]], ease(t, t0 + .35, t0 + .65));
-  }
-  CONTENT.clients.forEach((c, i) => {
-    const [x, y, w, h] = cells[i];
-    const ti = t0 + .22 + i * .11;
-    const p = ease(t, ti, ti + .5);
-    if (p <= 0) return;
-    // Zellen-Highlight
-    const fl = 1 - ease(t, ti, ti + .6, E.outCubic);
-    ctx.fillStyle = rgba(C.vibrant, .14 * fl); ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-    const img = LOGOS[c.name];
-    if (img) {
-      const maxW = w * .6, maxH = h * .45, sc = Math.min(maxW / img.width, maxH / img.height);
-      ctx.globalAlpha = p;
-      ctx.drawImage(img, x + w / 2 - img.width * sc / 2, y + h / 2 - img.height * sc / 2 + (1 - p) * h * .6, img.width * sc, img.height * sc);
-    } else {
-      let size = 64;
-      while (measure(ctx, c.name, font(700, size), -1) > w - 110) size -= 2;
-      ctx.font = font(700, size); setLS(ctx, -1); ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillStyle = C.ink;
-      ctx.fillText(c.name, x + w / 2, y + h / 2 + 4 + (1 - p) * h * .7);
-    }
-    ctx.restore();
-    // Ecken-Ticks
-    ctx.fillStyle = C.blue;
-    ctx.fillRect(x + 14, y + 14, 14 * p, 3); ctx.fillRect(x + 14, y + 14, 3, 14 * p);
-  });
-  // Licht-Sweep
-  const sw = prog(t, t0 + 1.2, t0 + 1.8);
-  if (sw > 0 && sw < 1) {
-    const sx = lerp(L - 400, R + 400, E.inOutCubic(sw));
-    const g = ctx.createLinearGradient(sx - 200, 0, sx + 200, 0);
-    g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(.5, "rgba(255,255,255,0.55)"); g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g; ctx.fillRect(L, top, R - L, rowH * rows);
-  }
-  ctx.restore();
 }
 
 // --- G · Endcard
@@ -1153,9 +1072,8 @@ const SCENES = [
   { id: "ai", a: 5.46, b: 6.62, draw: sceneAI, tin: "glitch" },
   { id: "tools", a: 6.85, b: 8.62, draw: sceneTools },
   { id: "recap", a: 6.4, b: 7.45, draw: sceneRecap, z: 5 },
-  { id: "flow", a: 8.16, b: 11.7, draw: sceneFlow, tin: "card" },
-  { id: "clients", a: 11.34, b: 13.52, draw: sceneClients, tin: "skewL", z: 2 },
-  { id: "end", a: 13.28, b: 15.01, draw: sceneEnd, z: 1 },
+  { id: "flow", a: 8.16, b: T.end + .02, draw: sceneFlow, tin: "card", z: 2 },
+  { id: "end", a: T.end - .22, b: DESIGN + .01, draw: sceneEnd, z: 1 },
 ];
 const TRANS = {
   zoom: { d: .26 }, iris: { d: .3 }, skew: { d: .22 }, glitch: { d: .12 }, card: { d: .34 }, skewL: { d: .22 },
@@ -1188,8 +1106,8 @@ function composite(ctx, sc, layer, t) {
     const z = ease(t, 3.36, 3.68, E.inExpo);
     if (z > 0) { const [nx, ny] = teamXY(TEAM.nodes[0]); ctx.translate(nx, ny); ctx.scale(1 + z * 1.6, 1 + z * 1.6); ctx.translate(-nx, -ny); }
   }
-  if (sc.id === "clients") {
-    const s = ease(t, 13.28, 13.5, E.inExpo);
+  if (sc.id === "flow") { // Workflow staucht sich zur Linie der Endcard
+    const s = ease(t, T.end - .22, T.end, E.inExpo);
     if (s > 0) { ctx.translate(0, LY.endLineY); ctx.scale(1, Math.max(.002, 1 - s)); ctx.translate(0, -LY.endLineY); }
   }
   if (p < 1) {
@@ -1288,12 +1206,12 @@ function transitionAccents(ctx, t) {
 
 // ---------------------------------------------------------------- HUD & Post
 const SECTIONS = [
-  [2.0, 3.5, "TEAM"], [3.5, 7.0, "01  EXPERTISE"], [7.0, 8.5, "02  TOOLS"], [8.5, 11.5, "03  HIGHLIGHT"], [11.5, 13.3, "04  CLIENTS"],
+  [2.0, 3.5, "TEAM"], [3.5, 7.0, "01  EXPERTISE"], [7.0, 8.5, "02  TOOLS"], [8.5, T.end - .2, "03  HIGHLIGHT"],
 ];
 function hud(ctx, t, real) {
-  const a = ease(t, 1.1, 1.5) * (1 - ease(t, 13.25, 13.45));
+  const a = ease(t, 1.1, 1.5) * (1 - ease(t, T.end - .25, T.end - .05));
   if (a <= 0) return;
-  const light = t >= 11.5 && t < 13.5;
+  const light = false;
   const col = light ? C.ink : "#ffffff";
   ctx.save();
   ctx.globalAlpha = a;
@@ -1343,7 +1261,7 @@ function post(ctx, t, real) {
     if (t >= ti && f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * amt})`; ctx.fillRect(0, 0, W, H); }
   }
   // Vignette
-  const light = t >= 11.55 && t < 13.3;
+  const light = false;
   const hd = Math.hypot(W, H) / 2;
   const v = ctx.createRadialGradient(W / 2, H / 2, hd * .6, W / 2, H / 2, hd * 1.08);
   v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, `rgba(2,4,16,${light ? .1 : .38})`);
@@ -1583,12 +1501,8 @@ function renderAudio(sampleRate = 48000) {
   pop(10.53, 700, .16, .5);
   // Stream: leises Ticken
   for (let k = 0; k < 14; k++) tick(10.48 + .75 + k * .085, 3200, .035, .7, .012);
-  // -> Kunden (Wipe)
-  whoosh(11.5, .45, .55, true, -.8, .8);
-  // Kunden-Namen
-  CONTENT.clients.forEach((c, i) => { tick(11.72 + i * .11, 1975.5, .14, -.6 + i * .3); click(11.72 + i * .11, .14, -.6 + i * .3, 2000); });
-  // Finale: Riser + Impact + Glanz
-  riser(12.45, 13.48, .4);
+  // Finale
+  riser(T.end - 1.05, T.end - .02, .4);
   impact(T.end, 1.1);
   shimmer(13.9, .06);
 
@@ -1600,21 +1514,10 @@ const params = new URLSearchParams(location.search);
 const RENDER_MODE = params.has("render");
 document.body.classList.add(RENDER_MODE ? "render" : "preview");
 
-async function loadLogos() {
-  await Promise.all(CONTENT.clients.map(c => new Promise(res => {
-    if (!c.logo) return res();
-    const img = new Image();
-    img.onload = () => { LOGOS[c.name] = img; res(); };
-    img.onerror = () => res();
-    img.src = c.logo;
-  })));
-}
-
 window.__ready = (async () => {
   await document.fonts.load(font(700, 100)); await document.fonts.load(font(500, 100)); await document.fonts.load(font(300, 100));
   await document.fonts.load(font(400, 20, "Ubuntu Mono")); await document.fonts.load(font(700, 20, "Ubuntu Mono"));
   await document.fonts.ready;
-  await loadLogos();
   draw(RENDER_MODE ? 0 : DURATION - .01);
   return true;
 })();
