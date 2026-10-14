@@ -1,11 +1,11 @@
-# DDFS · Team-Intro (21 s Motion Graphics)
+# DDFS · Team-Intro (28 s Motion Graphics)
 
-21-Sekunden-Video als Team-Intro und Pitch für Kunden: **Data-Driven Financial Services (DDFS), Capgemini Invent**.
+28-Sekunden-Video als Team-Intro und Pitch für Kunden: **Data-Driven Financial Services (DDFS), Capgemini Invent**.
 
 | Datei | Inhalt |
 | --- | --- |
-| `output/DDFS_Team-Intro_21s.mp4` | Finales Video – 1920×1080, 60 fps, H.264 + AAC-Stereo (-14 LUFS) |
-| `output/DDFS_Team-Intro_21s_LinkedIn_4x5.mp4` | Hochformat für LinkedIn – 1080×1350 (4:5), sonst identisch |
+| `output/DDFS_Team-Intro_28s.mp4` | Finales Video – 1920×1080, 60 fps, H.264 + AAC-Stereo (-14 LUFS) |
+| `output/DDFS_Team-Intro_28s_LinkedIn_4x5.mp4` | Hochformat für LinkedIn – 1080×1350 (4:5), sonst identisch |
 | `output/DDFS_Team-Intro_poster_LinkedIn_4x5.jpg` | Endcard im Hochformat |
 | `output/DDFS_Team-Intro_poster.jpg` | Standbild der Endcard (Thumbnail/Vorschaubild) |
 | `motion/ddfs-motion.html` | Quelle: Animation (Canvas) + Sounddesign (Web Audio), mit Live-Vorschau |
@@ -13,17 +13,17 @@
 
 ## Storyboard
 
-Alle Schnitte liegen auf einem 120-BPM-Raster (ein Beat = 0,5 s). Die Szenen sind auf einer 13-s-Design-Timeline animiert und werden über die Tabelle `WARP` auf 21 s Laufzeit gedehnt: längere Standzeiten, ruhigeres Tempo. Bild und Ton nutzen dieselben Cue-Zeiten.
+Alle Schnitte liegen auf einem 120-BPM-Raster (ein Beat = 0,5 s). Die Szenen sind auf einer 13-s-Design-Timeline animiert und werden über `SEGMENTS` auf 28 s Laufzeit gedehnt: Ein- und Ausstiegsanimationen laufen fast in Originaltempo, die Standzeiten dazwischen werden länger. So bleibt es ruhig, ohne träge zu wirken. Bild und Ton nutzen dieselben Cue-Zeiten.
 
 | Zeit | Szene | Bild | Ton |
 | --- | --- | --- | --- |
-| 0–3 s | **Intro** | Scan-Linie öffnet sich, Datenpunkte laufen als Welle durchs Bild, „DDFS“ entschlüsselt sich Buchstabe für Buchstabe | Riser, Glitches, Ticks, Impact bei 1,5 s, ab hier läuft der Beat |
-| 3–5,5 s | **Team** | 26 Knoten bauen ein Netzwerk auf („26 Experts. One Team.“), Leads Marcel Walther & André Kühn | Zoom-Whoosh, ein Tick pro Knoten, zwei Blips für die Leads |
-| 5,5–10 s | **Expertise** | „Data“ → „Insurance & Banking“ → „AI“, jede Kompetenz mit eigener Farbwelt und eigenem Übergang | Whooshes, Pops, Glitch + kurzer Impact für AI |
-| 10–11 s | **Recap** | Triptychon aller drei Kompetenzen | drei gestaffelte Pops |
-| 11–13 s | **Tools** | „Our Tool Stack“: n8n · Otera · Claude, die n8n-Karte zieht sich auf | Pops/Klicks, Whoosh |
-| 13–17,5 s | **Highlight n8n** | „Smart process automation.“ – Workflow Intake → Extraction → AI Analysis → Decision → Core System (+ Expert als Human-in-the-Loop), staucht sich am Ende zur Linie der Endcard | Pentatonische Blips, Erfolgs-Chime, leises Ticken, Riser zum Finale |
-| 17,5–21 s | **Endcard** | „Your first point of contact for Data & AI.“ + DDFS | Capgemini Invent | Impact, Schlussakkord, Ausklang |
+| 0–4 s | **Intro** | Scan-Linie öffnet sich, Datenpunkte laufen als Welle durchs Bild, „DDFS“ entschlüsselt sich Buchstabe für Buchstabe | Riser, Glitches, Ticks, Impact bei 2 s, ab hier läuft der Beat |
+| 4–7,5 s | **Team** | 26 Knoten bauen ein Netzwerk auf („26 Experts. One Team.“), Leads Marcel Walther & André Kühn | Zoom-Whoosh, ein Tick pro Knoten, zwei Blips für die Leads |
+| 7,5–13,5 s | **Expertise** | „Data“ → „Insurance & Banking“ → „AI“, jede Kompetenz mit eigener Farbwelt und eigenem Übergang | Whooshes, Pops, Glitch + kurzer Impact für AI |
+| 13,5–15 s | **Recap** | Triptychon aller drei Kompetenzen | drei gestaffelte Pops |
+| 15–17,5 s | **Tools** | „Our Tool Stack“: n8n · Otera · Claude, die n8n-Karte zieht sich auf | Pops/Klicks, Whoosh |
+| 17,5–23,5 s | **Highlight n8n** | „Smart process automation.“ – Workflow Intake → Extraction → AI Analysis → Decision → Core System (+ Expert als Human-in-the-Loop), staucht sich am Ende zur Linie der Endcard | Pentatonische Blips, Erfolgs-Chime, leises Ticken, Riser zum Finale |
+| 23,5–28 s | **Endcard** | „Your first point of contact for Data & AI.“ + DDFS | Capgemini Invent | Impact, Schlussakkord, Ausklang |
 
 **Design:** Capgemini-Palette (Capgemini Blue `#0070AD`, Vibrant Blue `#12ABDB`, Deep Purple `#2B0A3D`, Akzent Zest Green `#95E616` für Erfolg) und die Hausschrift **Ubuntu** (+ Ubuntu Mono für die technischen HUD-Elemente).
 **Sound:** komplett synthetisiert (Web Audio, keine Fremd-Samples, also auch keine Lizenzfragen): dezentes Musikbett in d-Moll (Dm–B♭–F–C) mit Kick, Hi-Hats und Bass, dazu Whooshes, Impacts, Riser, UI-Ticks und Blips genau auf den Animationen.
@@ -35,18 +35,18 @@ Voraussetzungen: Node.js ≥ 18 und `ffmpeg` im `PATH`.
 ```bash
 npm install                 # installiert Playwright (Chromium ggf. mit: npx playwright install chromium)
 npm run preview             # Live-Vorschau mit Ton und Scrubber unter http://localhost:8080/ddfs-motion.html
-npm run render              # finales MP4 (Querformat) → output/DDFS_Team-Intro_21s.mp4 (ca. 3 Min.)
-npm run render:vertical     # Hochformat 4:5 für LinkedIn → output/DDFS_Team-Intro_21s_LinkedIn_4x5.mp4
+npm run render              # finales MP4 (Querformat) → output/DDFS_Team-Intro_28s.mp4 (ca. 3 Min.)
+npm run render:vertical     # Hochformat 4:5 für LinkedIn → output/DDFS_Team-Intro_28s_LinkedIn_4x5.mp4
 npm run render:draft        # schneller Entwurf mit 30 fps
-node motion/render.mjs --still 20.95 --out poster.png        # einzelnes Standbild
-node motion/render.mjs --remux --out output/DDFS_Team-Intro_21s.mp4   # nur den Ton neu erzeugen
+node motion/render.mjs --still 27.95 --out poster.png        # einzelnes Standbild
+node motion/render.mjs --remux --out output/DDFS_Team-Intro_28s.mp4   # nur den Ton neu erzeugen
 ```
 
 ## Anpassen
 
 * **Formate**: Quer- und Hochformat kommen aus derselben Datei. Die Vorschau zeigt das Hochformat mit `ddfs-motion.html?format=vertical`, die Positionen je Format stehen in `LY` und direkt in den Szenen (`V ? … : …`).
 * **Texte und Inhalte**: Objekt `CONTENT` am Anfang von `motion/ddfs-motion.html` (Team, Leads, Tools, Workflow-Schritte).
-* **Timing**: Objekt `T` (Szenenstarts, Design-Zeit) und `WARP` (Abbildung auf die reale Laufzeit, `DURATION`). Die Sound-Cues hängen an denselben Werten.
+* **Timing**: Objekt `T` (Szenenstarts, Design-Zeit) und `SEGMENTS` (reale Dauer je Szene, daraus `WARP` und `DURATION`). Die Sound-Cues hängen an denselben Werten.
 * **Tool-Icons** (n8n, Otera, Claude) sind bewusst abstrakte Symbole und keine Markenlogos.
 
 Schriften: Ubuntu Font Family, Ubuntu Font Licence 1.0 (`motion/assets/fonts/UBUNTU-FONT-LICENCE.txt`).

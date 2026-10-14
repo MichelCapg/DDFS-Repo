@@ -29,7 +29,7 @@
 <canvas id="stage" width="1920" height="1080"></canvas>
 <div class="controls">
   <button id="play">▶ Play</button>
-  <input id="scrub" type="range" min="0" max="24" step="0.001" value="0">
+  <input id="scrub" type="range" min="0" max="30" step="0.001" value="0">
   <span id="time">00.00</span>
 </div>
 <script>
@@ -45,11 +45,21 @@
 const V = new URLSearchParams(location.search).get("format") === "vertical";
 const W = V ? 1080 : 1920, H = V ? 1350 : 1080, FPS = 60;
 const DESIGN = 13;   // Länge der Design-Timeline (alle Szenen-Zeiten unten)
-const DURATION = 21; // reale Laufzeit des Videos
-/* Zeit-Remap: [real, design]-Stützpunkte. Schnitte landen real auf dem 0,5-s-Beat-Raster,
-   die Standzeiten werden gedehnt, damit Texte in Ruhe gelesen werden können. */
-const WARP = [[0, 0], [1.5, 1.0], [3.0, 2.0], [5.5, 3.5], [7.0, 4.5], [8.5, 5.5], [10.0, 6.5], [11.0, 7.0],
-  [13.0, 8.5], [17.5, 11.5], [18.5, 12.3], [21.0, 13.0]];
+/* Zeit-Remap: jede Szene [Design-Start, Design-Ende, reale Dauer]. Innerhalb einer Szene laufen
+   Einstieg und Ausstieg nur leicht verlangsamt (Faktor 1,3), die Standzeit dazwischen wird gedehnt:
+   ruhiger, ohne dass Übergänge träge werden. Szenengrenzen liegen real auf dem 0,5-s-Beat-Raster. */
+const SEGMENTS = [[0, 1.0, 2.0], [1.0, 2.0, 2.0], [2.0, 3.5, 3.5], [3.5, 4.5, 2.0], [4.5, 5.5, 2.0], [5.5, 6.5, 2.0],
+  [6.5, 7.0, 1.5], [7.0, 8.5, 2.5], [8.5, 11.5, 6.0], [11.5, 13.0, 4.5]];
+const WARP = (() => {
+  const pts = [[0, 0]]; let r = 0;
+  for (const [d0, d1, dur] of SEGMENTS) {
+    const len = d1 - d0, a = Math.min(.45, len * .4), b = Math.min(.2, len * .2), k = 1.3;
+    pts.push([r + a * k, d0 + a], [r + dur - b * k, d1 - b], [r + dur, d1]);
+    r += dur;
+  }
+  return pts;
+})();
+const DURATION = WARP[WARP.length - 1][0]; // reale Laufzeit des Videos (28 s)
 function warpMap(x, from, to) {
   for (let i = 1; i < WARP.length; i++) {
     const a = WARP[i - 1], b = WARP[i];
@@ -1538,6 +1548,7 @@ window.__audio = async () => {
 // Live-Vorschau mit Ton
 if (!RENDER_MODE) {
   const btn = document.getElementById("play"), scrub = document.getElementById("scrub"), tl = document.getElementById("time");
+  scrub.max = DURATION;
   let actx = null, buffer = null, src = null, startAt = 0, playing = false;
   const show = t => { scrub.value = t; tl.textContent = t.toFixed(2).padStart(5, "0"); draw(t); };
   scrub.addEventListener("input", () => { stop(); show(+scrub.value); });
