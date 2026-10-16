@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AVB-Agent Explainer</title>
+<style>
+  @font-face { font-family: "Ubuntu"; font-weight: 300; src: url("assets/fonts/ubuntu-latin-300-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Ubuntu"; font-weight: 400; src: url("assets/fonts/ubuntu-latin-400-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Ubuntu"; font-weight: 500; src: url("assets/fonts/ubuntu-latin-500-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Ubuntu"; font-weight: 700; src: url("assets/fonts/ubuntu-latin-700-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Ubuntu Mono"; font-weight: 400; src: url("assets/fonts/ubuntu-mono-latin-400-normal.woff2") format("woff2"); }
+  @font-face { font-family: "Ubuntu Mono"; font-weight: 700; src: url("assets/fonts/ubuntu-mono-latin-700-normal.woff2") format("woff2"); }
+  :root { --ar: 16 / 9; --bg: #070b1a; --fg: #e8eef8; --accent: #2dd4bf; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Ubuntu", system-ui, sans-serif; }
+  body.preview { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; box-sizing: border-box; }
+  canvas { display: block; }
+  body.preview canvas { width: min(100%, calc((100vh - 120px) * var(--ar))); height: auto; aspect-ratio: var(--ar); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  body.render { overflow: hidden; }
+  .controls { display: flex; align-items: center; gap: 12px; width: min(100%, calc((100vh - 120px) * var(--ar))); }
+  .controls button { background: var(--accent); color: #070b1a; border: 0; border-radius: 999px; padding: 10px 20px; font: 500 15px "Ubuntu", sans-serif; cursor: pointer; }
+  .controls input { flex: 1; accent-color: var(--accent); }
+  .controls span { font: 400 14px "Ubuntu Mono", monospace; min-width: 64px; text-align: right; opacity: .8; }
+  body.render .controls { display: none; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<div class="controls">
+  <button id="play">▶ Play</button>
+  <input id="scrub" type="range" min="0" max="50" step="0.001" value="0">
+  <span id="time">00.00</span>
+</div>
+<script>
+"use strict";
+/* =====================================================================
+   AVB-Agent · Erklärvideo (≈ 47 s)
+   Problem (GOÄ neu → AVB veraltet → manueller Aufwand) → Lösung (zwei
+   KI-Agenten im Produkt) → Mehrwert. Bewusst ohne Kunden-Branding.
+   draw(t) zeichnet deterministisch den Frame zur Zeit t (Sekunden),
+   renderAudio() synthetisiert den Ton aus denselben Cue-Zeiten.
+   ===================================================================== */
+const W = 1920, H = 1080, FPS = 60;
+
+// ---------------------------------------------------------------- Timeline (Sekunden, real)
+const S = {
+  intro: 0, change: 5, avb: 10.5, manual: 16, turn: 21,
+  upload: 23.5, detect: 26, update: 29.5, review: 33, export: 37,
+  value: 40, end: 43.5,
+};
+const DURATION = 47;
+const BEAT = .5; // 120 BPM
+
+// ---------------------------------------------------------------- Inhalte (hier anpassen)
+const CONTENT = {
+  product: "AVB-Agent",
+  file: "AVB_Krankheitskosten.docx",
+  fileOut: "AVB_Krankheitskosten_GOÄ-neu.docx",
+  status: "Stand: gemeinsamer Entwurf von BÄK und PKV-Verband · Inkrafttreten geplant für 2028",
+  changes: [
+    { big: "≈ 5.500", title: "Gebührenpositionen", sub: "komplett neu strukturiertes Leistungsverzeichnis" },
+    { big: "Festbeträge", title: "statt Steigerungsfaktor", sub: "2,3-fach und 3,5-fach entfallen" },
+    { big: "§ → §", title: "Neuer Paragrafenteil", sub: "Regeln und Verweise verschieben sich" },
+  ],
+  // Dokument im Produkt: Absätze, hit = Index des betroffenen Blocks
+  paras: [
+    { h: "§ 1  Gegenstand des Versicherungsschutzes", n: 3 },
+    { h: "§ 2  Beginn des Versicherungsschutzes", n: 2 },
+    { h: "§ 4 Abs. 2  Erstattungsfähige Aufwendungen", n: 3, hit: 0 },
+    { h: "§ 4 Abs. 3  Ärztliche Leistungen", n: 2, hit: 1 },
+    { h: "§ 5  Einschränkung der Leistungspflicht", n: 3 },
+    { h: "§ 6  Auszahlung der Versicherungsleistungen", n: 2, hit: 2 },
+    { h: "§ 8  Beitragszahlung", n: 2 },
+    { h: "Tarif  Ambulante Heilbehandlung", n: 3, hit: 3 },
+  ],
+  hits: [
+    { ref: "§ 4 Abs. 2", what: "Erstattung bis zum 3,5-fachen Satz" },
+    { ref: "§ 4 Abs. 3", what: "Verweis auf § 5 GOÄ (alt)" },
+    { ref: "§ 6", what: "Rechnungsangaben mit Steigerungsfaktor" },
+    { ref: "Tarif", what: "Höchstsätze nach GOÄ" },
+  ],
+  blocksTotal: 214,
+  review: {
+    ref: "§ 4 Abs. 2  Erstattungsfähige Aufwendungen",
+    old: "Erstattet werden Aufwendungen für ärztliche Leistungen bis zum 3,5-fachen Satz der GOÄ.",
+    neu: "Erstattet werden Aufwendungen für ärztliche Leistungen in Höhe der Beträge der GOÄ",
+    edit: " einschließlich zulässiger Zuschläge.",
+    source: "GOÄ neu · Gebührenverzeichnis mit Festbeträgen",
+    quote: "„… je Leistung ein fester Euro-Betrag; Steigerungssätze entfallen …“",
+  },
+  values: [
+    ["Weniger manueller Aufwand", "Agenten übernehmen Suche und Neuformulierung"],
+    ["Volle Transparenz", "Jede Änderung sichtbar und mit GOÄ-Quelle belegt"],
+    ["Volle Kontrolle", "Prüfen, bearbeiten, freigeben, im Originalformat ausgeben"],
+  ],
+};
+
+// ---------------------------------------------------------------- Farben (neutral, ohne Kunden-CI)
+const C = {
+  night: "#070B1A", navy: "#0D1430", panel: "#101A38", panel2: "#16224A", line: "#26355F",
+  teal: "#2DD4BF", cyan: "#38BDF8", indigo: "#818CF8",
+  amber: "#F5B841", green: "#4ADE80",
+  paper: "#F4F6FA", ink: "#18213D", inkSoft: "#8A93AD", bar: "#D5DAE6",
+  white: "#FFFFFF", mute: "#93A0BF",
+};
+
+// ---------------------------------------------------------------- Helfer
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  lin: x => x,
+  outCubic: x => 1 - Math.pow(1 - x, 3),
+  inCubic: x => x * x * x,
+  inOutCubic: x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+  outQuint: x => 1 - Math.pow(1 - x, 5),
+  outExpo: x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x),
+  inExpo: x => x <= 0 ? 0 : Math.pow(2, 10 * x - 10),
+  inOutExpo: x => x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2,
+  outBack: x => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+};
+const ease = (t, a, b, fn = E.outExpo) => fn(prog(t, a, b));
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+function mix(h1, h2, k) {
+  const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16);
+  const c = [16, 8, 0].map(s => Math.round(lerp(a >> s & 255, b >> s & 255, clamp(k))));
+  return "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
+}
+const font = (w, s, fam = "Ubuntu") => `${w} ${s}px "${fam}"`;
+function rr(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function glow(ctx, x, y, r, color, a) {
+  if (a <= 0 || r <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, rgba(color, a)); g.addColorStop(.35, rgba(color, a * .45)); g.addColorStop(1, rgba(color, 0));
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+}
+function wrap(ctx, text, maxW) {
+  const words = text.split(" "), lines = []; let cur = "";
+  for (const w of words) { const test = cur ? cur + " " + w : w; if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test; }
+  if (cur) lines.push(cur);
+  return lines;
+}
+/* Masken-Typo: Wörter gleiten aus einer Maske nach oben, optional wieder hinaus. */
+function kinetic(ctx, text, x, y, t, t0, o = {}) {
+  const f = o.f || font(700, 80), dur = o.dur || .6, st = o.stagger ?? .05;
+  ctx.save();
+  ctx.font = f; ctx.letterSpacing = (o.ls || 0) + "px"; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  const full = ctx.measureText(text).width, size = parseFloat(f.match(/(\d+(?:\.\d+)?)px/)[1]);
+  let x0 = o.align === "center" ? x - full / 2 : o.align === "right" ? x - full : x;
+  const units = o.by === "char" ? [...text] : text.split(/(\s+)/);
+  let cursor = "", idx = 0;
+  for (const u of units) {
+    const ux = x0 + ctx.measureText(cursor).width; cursor += u;
+    if (/^\s+$/.test(u)) continue;
+    const ti = t0 + idx * st; idx++;
+    const p = ease(t, ti, ti + dur, E.outExpo);
+    if (p <= 0) continue;
+    let dy = (1 - p) * size * 1.1, alpha = 1;
+    if (o.out != null) { const q = ease(t, o.out + (idx - 1) * st * .5, o.out + (idx - 1) * st * .5 + .4, E.inExpo); dy -= q * size * 1.1; alpha = 1 - q; }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ux - size, y - size * 1.05, ctx.measureText(u).width + size * 2, size * 1.35); ctx.clip();
+    ctx.globalAlpha *= alpha * clamp(p * 1.4);
+    ctx.fillStyle = o.color || C.white; ctx.fillText(u, ux, y + dy);
+    ctx.restore();
+  }
+  ctx.restore();
+  return full;
+}
+function label(ctx, text, x, y, color, a = 1, size = 20, align = "left", ls = 4) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.font = font(700, size, "Ubuntu Mono"); ctx.letterSpacing = ls + "px";
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = "alphabetic"; ctx.fillText(text, x, y); ctx.restore();
+}
+function typed(text, t, t0, cps = 40) { const n = Math.floor(clamp((t - t0) * cps, 0, text.length)); return text.slice(0, n); }
+function checkMark(ctx, x, y, s, p, color, lw = 4) {
+  if (p <= 0) return;
+  const pts = [[-.45, .02], [-.12, .35], [.48, -.32]].map(([a, b]) => [x + a * s, y + b * s]);
+  const l1 = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), l2 = Math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1]);
+  const d = p * (l1 + l2);
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = ctx.lineJoin = "round";
+  ctx.beginPath(); ctx.moveTo(...pts[0]);
+  if (d <= l1) ctx.lineTo(lerp(pts[0][0], pts[1][0], d / l1), lerp(pts[0][1], pts[1][1], d / l1));
+  else { ctx.lineTo(...pts[1]); const k = (d - l1) / l2; ctx.lineTo(lerp(pts[1][0], pts[2][0], k), lerp(pts[1][1], pts[2][1], k)); }
+  ctx.stroke(); ctx.restore();
+}
+function pointer(ctx, x, y, press = 0, a = 1) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.scale(1 - press * .12, 1 - press * .12);
+  if (press > 0) { ctx.beginPath(); ctx.arc(0, 0, 18 + press * 26, 0, Math.PI * 2); ctx.strokeStyle = rgba(C.teal, .6 * (1 - press)); ctx.lineWidth = 3; ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 34); ctx.lineTo(9, 26); ctx.lineTo(16, 41); ctx.lineTo(22, 38); ctx.lineTo(15, 23); ctx.lineTo(27, 23); ctx.closePath();
+  ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+  ctx.fillStyle = C.white; ctx.fill(); ctx.shadowColor = "transparent"; ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+}
+// Mausweg: Keyframes [[t, x, y], ...], Klicks [t, ...]
+function cursorAt(keys, t) {
+  if (t <= keys[0][0]) return [keys[0][1], keys[0][2]];
+  for (let i = 1; i < keys.length; i++) {
+    if (t <= keys[i][0]) { const k = E.inOutCubic(prog(t, keys[i - 1][0], keys[i][0])); return [lerp(keys[i - 1][1], keys[i][1], k), lerp(keys[i - 1][2], keys[i][2], k)]; }
+  }
+  const l = keys[keys.length - 1]; return [l[1], l[2]];
+}
+const pressAt = (clicks, t) => Math.max(0, ...clicks.map(c => t >= c && t < c + .35 ? 1 - prog(t, c, c + .35) : 0));
+
+// Produkt-Logo: abgerundetes Dokument mit Spark
+function logoMark(ctx, x, y, s, a = 1, t = 0) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y);
+  const g = ctx.createLinearGradient(-s / 2, -s / 2, s / 2, s / 2); g.addColorStop(0, C.teal); g.addColorStop(1, C.cyan);
+  rr(ctx, -s / 2, -s / 2, s, s, s * .26); ctx.fillStyle = g; ctx.fill();
+  ctx.fillStyle = C.night;
+  rr(ctx, -s * .24, -s * .28, s * .38, s * .56, s * .06); ctx.fill();
+  ctx.fillStyle = g;
+  for (let i = 0; i < 3; i++) rr(ctx, -s * .17, -s * .17 + i * s * .12, s * (i === 2 ? .14 : .24), s * .05, s * .025), ctx.fill();
+  // Spark
+  ctx.translate(s * .2, s * .18); ctx.rotate(t * .8);
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) { const r = i % 2 ? s * .05 : s * .17, an = i * Math.PI / 4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); }
+  ctx.closePath(); ctx.fillStyle = C.white; ctx.fill();
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- Hintergrund
+const DOTS = (() => { const r = mulberry32(7), a = []; for (let i = 0; i < 70; i++) a.push({ x: r() * W, y: r() * H, s: .6 + r() * 1.8, v: 6 + r() * 22, a: .15 + r() * .45 }); return a; })();
+function background(ctx, t) {
+  const warm = 1 - ease(t, S.turn - .2, S.turn + .6, E.outCubic); // Problemteil kühler und dunkler
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, mix("#0B1330", "#0A1A33", 1 - warm)); g.addColorStop(1, C.night);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Raster
+  ctx.save(); ctx.strokeStyle = rgba(C.cyan, .045); ctx.lineWidth = 1;
+  const off = (t * 10) % 80;
+  for (let x = -80 + off; x < W + 80; x += 80) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = -80 + off * .5; y < H + 80; y += 80) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.restore();
+  // Schwebende Partikel
+  for (const d of DOTS) {
+    const y = (d.y - t * d.v + H * 4) % H;
+    ctx.fillStyle = rgba(warm > .5 ? C.mute : C.teal, d.a * .5);
+    ctx.beginPath(); ctx.arc(d.x, y, d.s, 0, Math.PI * 2); ctx.fill();
+  }
+  glow(ctx, W * .8, H * .15, 700, warm > .5 ? C.indigo : C.teal, .07);
+}
+
+// ---------------------------------------------------------------- Abstraktes Dokument (Papier)
+function paper(ctx, x, y, w, h, a = 1, shadow = true) {
+  ctx.save(); ctx.globalAlpha *= a;
+  if (shadow) { ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18; }
+  rr(ctx, x, y, w, h, Math.min(14, w * .05)); ctx.fillStyle = C.paper; ctx.fill();
+  ctx.restore();
+}
+function bars(ctx, x, y, w, n, gap, seed, color = C.bar, hgt = 8, p = 1) {
+  const r = mulberry32(seed);
+  for (let i = 0; i < n; i++) {
+    const lw = (i === n - 1 ? .45 + r() * .3 : .86 + r() * .14) * w * clamp(p * n - i);
+    if (lw <= 0) continue;
+    rr(ctx, x, y + i * gap, lw, hgt, hgt / 2); ctx.fillStyle = color; ctx.fill();
+  }
+}
+
+// ================================================================= SZENEN
+// --- 1 · Ausgangslage: GOÄ, Zeitstrahl, „GOÄ neu“
+const IMPACT1 = 2.6;
+function sceneIntro(ctx, t) {
+  const out = ease(t, 4.55, 5.0, E.inExpo);
+  ctx.save(); ctx.globalAlpha = 1 - out; ctx.translate(0, -out * 60);
+  const cx = W / 2;
+  label(ctx, "AUSGANGSLAGE", cx, 300, C.teal, ease(t, .1, .6), 22, "center", 8);
+  ctx.save(); ctx.globalAlpha *= ease(t, .2, .8);
+  ctx.font = font(400, 30, "Ubuntu Mono"); ctx.textAlign = "center"; ctx.fillStyle = C.mute; ctx.letterSpacing = "3px";
+  ctx.fillText(typed("Gebührenordnung für Ärzte", t, .3, 45), cx, 350); ctx.restore();
+  // „GOÄ“ + „ neu“
+  ctx.font = font(700, 230); ctx.letterSpacing = "0px";
+  const wG = ctx.measureText("GOÄ").width; ctx.font = font(300, 230); const wN = ctx.measureText(" neu").width;
+  const shift = ease(t, IMPACT1 - .1, IMPACT1 + .5, E.outExpo);
+  const gx = cx - wG / 2 - shift * wN / 2;
+  kinetic(ctx, "GOÄ", gx, 590, t, .45, { f: font(700, 230), by: "char", stagger: .07, dur: .8 });
+  if (t > IMPACT1 - .1) {
+    ctx.save(); ctx.beginPath(); ctx.rect(gx + wG, 380, wN + 40, 260); ctx.clip();
+    ctx.font = font(300, 230); ctx.fillStyle = C.teal; ctx.textAlign = "left";
+    ctx.globalAlpha *= shift; ctx.fillText(" neu", gx + wG + (1 - shift) * -80, 590); ctx.restore();
+    glow(ctx, gx + wG + wN / 2, 520, 360, C.teal, .18 * (1 - prog(t, IMPACT1, IMPACT1 + 1.4)));
+  }
+  // Zeitstrahl
+  const ty = 760, x0 = 520, x1 = 1400;
+  const lp = ease(t, .9, 2.4, E.inOutCubic);
+  ctx.strokeStyle = rgba(C.mute, .5); ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x0, ty); ctx.lineTo(lerp(x0, x1, lp), ty); ctx.stroke();
+  const marks = [[x0 + 40, "1982", "GOÄ tritt in Kraft", 1.0, C.mute], [x0 + 400, "1996", "letzte umfassende Reform", 1.5, C.mute], [x1 - 20, "Neu", "grundlegende Neufassung", IMPACT1, C.teal]];
+  for (const [mx, yr, txt, mt, col] of marks) {
+    const p = ease(t, mt, mt + .5, E.outBack);
+    if (p <= 0) continue;
+    ctx.beginPath(); ctx.arc(mx, ty, 9 * p, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+    if (col === C.teal) glow(ctx, mx, ty, 60, C.teal, .5 * p);
+    ctx.save(); ctx.globalAlpha *= clamp(p); ctx.textAlign = "center";
+    ctx.font = font(700, 34); ctx.fillStyle = col === C.teal ? C.teal : C.white; ctx.fillText(yr, mx, ty - 30);
+    ctx.font = font(400, 22); ctx.fillStyle = C.mute; ctx.fillText(txt, mx, ty + 44); ctx.restore();
+  }
+  // Aussage
+  kinetic(ctx, "Die Abrechnungsgrundlage der PKV wird grundlegend neu gefasst.", cx, 905, t, 3.1, { f: font(400, 40), align: "center", stagger: .04, color: C.white });
+  ctx.restore();
+}
+
+// --- 2 · Was sich ändert
+const SIGILS = (() => { const r = mulberry32(31), a = []; for (let i = 0; i < 26; i++) a.push({ x: r() * W, y: r() * H, s: 30 + r() * 70, v: 8 + r() * 20, n: 1 + Math.floor(r() * 12), ph: r() * 10 }); return a; })();
+function sceneChange(ctx, t) {
+  const t0 = S.change, inA = ease(t, t0, t0 + .5), out = ease(t, S.avb - .45, S.avb, E.inExpo);
+  ctx.save(); ctx.globalAlpha = inA * (1 - out); ctx.translate(-out * 120, 0);
+  // Paragrafen-Zeichen im Hintergrund, deren Nummern „springen“
+  for (const s of SIGILS) {
+    const n = (s.n + Math.floor((t + s.ph) * 1.5)) % 14 + 1;
+    ctx.save(); ctx.globalAlpha *= .07; ctx.font = font(300, s.s); ctx.fillStyle = C.indigo;
+    ctx.fillText("§ " + n, s.x, (s.y - (t - t0) * s.v + H) % H); ctx.restore();
+  }
+  label(ctx, "WAS SICH ÄNDERT", 160, 170, C.teal, ease(t, t0 + .1, t0 + .6), 22, "left", 8);
+  kinetic(ctx, "Neue Struktur. Neue Beträge. Neue Paragrafen.", 160, 255, t, t0 + .2, { f: font(700, 66), stagger: .06 });
+  const cw = 500, ch = 400, gap = 50, cx0 = (W - (cw * 3 + gap * 2)) / 2, cy = 380;
+  CONTENT.changes.forEach((c, i) => {
+    const ti = t0 + .9 + i * .45, p = ease(t, ti, ti + .8, E.outExpo);
+    if (p <= 0) return;
+    const x = cx0 + i * (cw + gap), y = cy + (1 - p) * 120;
+    ctx.save(); ctx.globalAlpha *= clamp(p * 1.5);
+    rr(ctx, x, y, cw, ch, 26); ctx.fillStyle = rgba(C.panel2, .85); ctx.fill();
+    ctx.strokeStyle = rgba(C.indigo, .35); ctx.lineWidth = 1.5; ctx.stroke();
+    rr(ctx, x, y, cw, 6, 3); ctx.fillStyle = [C.teal, C.cyan, C.indigo][i]; ctx.fill();
+    label(ctx, "0" + (i + 1), x + 40, y + 70, [C.teal, C.cyan, C.indigo][i], 1, 22, "left", 4);
+    ctx.font = font(700, i === 1 ? 70 : 84); ctx.fillStyle = C.white; ctx.fillText(c.big, x + 40, y + 185);
+    ctx.font = font(500, 34); ctx.fillStyle = C.white; ctx.fillText(c.title, x + 40, y + 250);
+    ctx.font = font(400, 24); ctx.fillStyle = C.mute;
+    wrap(ctx, c.sub, cw - 80).forEach((l, k) => ctx.fillText(l, x + 40, y + 300 + k * 34));
+    if (i === 1) { // „2,3-fach und 3,5-fach“ wird durchgestrichen
+      const sp = ease(t, ti + .9, ti + 1.4, E.inOutCubic);
+      ctx.font = font(400, 24); const sw = ctx.measureText("2,3-fach und 3,5-fach").width;
+      ctx.strokeStyle = C.amber; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 38, y + 292); ctx.lineTo(x + 38 + (sw + 4) * sp, y + 292); ctx.stroke();
+    }
+    ctx.restore();
+  });
+  label(ctx, CONTENT.status, W / 2, 900, C.mute, ease(t, t0 + 2.6, t0 + 3.2) * .9, 18, "center", 2);
+  ctx.restore();
+}
+
+// --- 3 · Die Folge: AVB mit veralteten Verweisen
+const AVB_LINES = [
+  { h: "§ 4  Umfang der Leistungspflicht" },
+  { n: 3 },
+  { hl: "… bis zum 3,5-fachen Satz der GOÄ erstattet …", note: "Steigerungsfaktor entfällt" },
+  { n: 2 },
+  { h: "§ 5  Einschränkungen" },
+  { n: 2 },
+  { hl: "… soweit gemäß § 5 GOÄ berechnet …", note: "Paragraf verschoben" },
+  { n: 3 },
+  { h: "§ 6  Auszahlung" },
+  { n: 1 },
+  { hl: "… Rechnung mit GOÄ-Ziffer und Faktor …", note: "Rechnungsangaben neu" },
+  { n: 2 },
+];
+function drawAVB(ctx, x, y, w, t, hlStart, scale = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  const h = 820;
+  paper(ctx, 0, 0, w, h);
+  ctx.fillStyle = C.ink; ctx.font = font(700, 30); ctx.fillText("Allgemeine", 50, 80); ctx.fillText("Versicherungsbedingungen", 50, 118);
+  ctx.font = font(400, 19); ctx.fillStyle = C.inkSoft; ctx.fillText("Krankheitskostenversicherung · Teil II", 50, 152);
+  ctx.fillStyle = C.bar; ctx.fillRect(50, 176, w - 100, 2);
+  let cy = 220, k = 0; const hits = [];
+  for (const L of AVB_LINES) {
+    if (L.h) { ctx.font = font(700, 20); ctx.fillStyle = C.ink; ctx.fillText(L.h, 50, cy + 14); cy += 40; }
+    else if (L.n) { bars(ctx, 50, cy, w - 100, L.n, 24, 50 + cy); cy += L.n * 24 + 10; }
+    else {
+      const p = ease(t, hlStart + k * .45, hlStart + k * .45 + .5, E.outCubic);
+      ctx.font = font(500, 19); const tw = ctx.measureText(L.hl).width;
+      rr(ctx, 44, cy - 6, (tw + 16) * p, 32, 6); ctx.fillStyle = rgba(C.amber, .35); ctx.fill();
+      if (p > 0) { ctx.fillStyle = C.amber; ctx.fillRect(30, cy - 6, 5, 32); }
+      ctx.fillStyle = C.ink; ctx.fillText(L.hl, 52, cy + 16);
+      hits.push({ y: cy + 10, p, note: L.note, end: 52 + tw + 12 });
+      cy += 44; k++;
+    }
+  }
+  ctx.restore();
+  return hits.map(hh => ({ ...hh, y: y + hh.y * scale, end: x + hh.end * scale }));
+}
+function sceneAVB(ctx, t) {
+  const t0 = S.avb, inP = ease(t, t0, t0 + .8, E.outExpo), out = ease(t, S.manual - .1, S.manual + .4, E.inOutCubic);
+  ctx.save(); ctx.globalAlpha = clamp(inP * 1.5);
+  const dx = lerp(220, W / 2 - 260 * .2, out), dy = lerp(130 + (1 - inP) * 200, H / 2 - 410 * .2, out), sc = lerp(1, .2, out);
+  const hits = drawAVB(ctx, dx, dy, 620, t, t0 + 1.0, sc);
+  // Callouts
+  ctx.save(); ctx.globalAlpha *= 1 - ease(t, S.manual - .5, S.manual - .1);
+  hits.forEach((h, i) => {
+    const p = ease(t, t0 + 1.3 + i * .45, t0 + 1.9 + i * .45, E.outExpo);
+    if (p <= 0) return;
+    const lx = 870, ex = lerp(h.end, lx, p);
+    ctx.strokeStyle = rgba(C.amber, .8); ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(h.end, h.y); ctx.lineTo(ex, h.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha *= p;
+    ctx.font = font(500, 20); const tw = ctx.measureText(h.note).width;
+    rr(ctx, lx, h.y - 20, tw + 64, 40, 20); ctx.fillStyle = rgba(C.amber, .16); ctx.fill(); ctx.strokeStyle = C.amber; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(lx + 22, h.y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = C.night; ctx.font = font(700, 14); ctx.textAlign = "center"; ctx.fillText("!", lx + 22, h.y + 5); ctx.textAlign = "left";
+    ctx.font = font(500, 20); ctx.fillStyle = C.white; ctx.fillText(h.note, lx + 42, h.y + 7);
+    ctx.globalAlpha /= p;
+  });
+  // Text rechts
+  const tx = 1210;
+  label(ctx, "DIE FOLGE", tx, 330, C.amber, ease(t, t0 + .4, t0 + .9), 22, "left", 8);
+  ["Jede private", "Krankenversicherung", "muss ihre AVB", "anpassen."].forEach((l, i) => kinetic(ctx, l, tx, 410 + i * 72, t, t0 + .5 + i * .12, { f: font(700, 62), color: i === 3 ? C.amber : C.white }));
+  ctx.save(); ctx.globalAlpha *= ease(t, t0 + 2.2, t0 + 2.8); ctx.font = font(400, 26); ctx.fillStyle = C.mute;
+  wrap(ctx, "Erstattungsgrenzen, Leistungsversprechen und GOÄ-Verweise stehen direkt in den Versicherungsbedingungen.", 600).forEach((l, i) => ctx.fillText(l, tx, 740 + i * 38));
+  ctx.restore();
+  ctx.restore();
+  ctx.restore();
+}
+
+// --- 4 · Das Problem: manueller Aufwand
+const GRID = (() => {
+  const a = [], cols = 12, rows = 5, w = 96, h = 122, gx = 26, gy = 20, x0 = (W - (cols * w + (cols - 1) * gx)) / 2, y0 = 318;
+  const r = mulberry32(5);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) a.push({ x: x0 + i * (w + gx), y: y0 + j * (h + gy), w, h, d: Math.hypot(i - 5.5, j - 2) * .06 + r() * .1, done: r() < .12, td: r() });
+  return a;
+})();
+function sceneManual(ctx, t) {
+  const t0 = S.manual, collapse = ease(t, S.turn - .7, S.turn, E.inExpo);
+  ctx.save();
+  // Kachel-Raster aus Dokumenten
+  for (const d of GRID) {
+    const p = ease(t, t0 + .2 + d.d, t0 + .9 + d.d, E.outExpo);
+    if (p <= 0) continue;
+    const cx = d.x + d.w / 2, cy = d.y + d.h / 2;
+    const x = lerp(lerp(W / 2, cx, p), W / 2, collapse) - d.w / 2, y = lerp(lerp(H / 2, cy, p), H / 2, collapse) - d.h / 2;
+    const s = (1 - collapse * .9);
+    ctx.save(); ctx.globalAlpha *= clamp(p * 1.3) * (1 - collapse * .6);
+    ctx.translate(x + d.w / 2, y + d.h / 2); ctx.scale(s, s); ctx.translate(-d.w / 2, -d.h / 2);
+    rr(ctx, 0, 0, d.w, d.h, 8); ctx.fillStyle = mix(C.paper, "#9AA3BA", .35); ctx.fill();
+    bars(ctx, 12, 18, d.w - 24, 3, 12, d.x * 3 + d.y, "#C2C8D6", 5);
+    rr(ctx, 10, 58, d.w * .7, 10, 4); ctx.fillStyle = rgba(C.amber, .8); ctx.fill();
+    bars(ctx, 12, 80, d.w - 24, 3, 11, d.x + d.y * 7, "#C2C8D6", 5);
+    // Nur wenige werden „von Hand“ fertig
+    const dp = ease(t, t0 + 1.6 + d.td * 2.4, t0 + 1.9 + d.td * 2.4);
+    if (d.done && dp > 0) {
+      ctx.fillStyle = rgba(C.green, .9 * dp); ctx.beginPath(); ctx.arc(d.w - 16, 16, 13, 0, Math.PI * 2); ctx.fill();
+      checkMark(ctx, d.w - 16, 16, 16, dp, C.night, 3);
+    }
+    ctx.restore();
+  }
+  // Abdunkeln für Text
+  const textA = ease(t, t0 + .3, t0 + .9) * (1 - ease(t, S.turn - .9, S.turn - .5));
+  ctx.save(); ctx.globalAlpha *= textA;
+  const g = ctx.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, rgba(C.night, .95)); g.addColorStop(1, rgba(C.night, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 300);
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha *= 1 - ease(t, S.turn - .9, S.turn - .5);
+  label(ctx, "DAS PROBLEM", 160, 130, C.amber, ease(t, t0 + .2, t0 + .7), 22, "left", 8);
+  kinetic(ctx, "Heute: Klausel für Klausel. Von Hand.", 160, 215, t, t0 + .3, { f: font(700, 66), stagger: .06 });
+  ctx.save(); ctx.globalAlpha *= ease(t, t0 + 1.4, t0 + 2); ctx.font = font(400, 28); ctx.fillStyle = C.mute;
+  ctx.fillText("Viele Tarife · unzählige Verweise · hohes Fehlerrisiko · enger Zeitplan bis zur Umstellung", 160, 262); ctx.restore();
+  // Uhr
+  const ux = 1720, uy = 175, ur = 54, up = ease(t, t0 + .5, t0 + 1.1, E.outBack);
+  if (up > 0) {
+    ctx.save(); ctx.translate(ux, uy); ctx.scale(up, up);
+    ctx.beginPath(); ctx.arc(0, 0, ur, 0, Math.PI * 2); ctx.strokeStyle = C.amber; ctx.lineWidth = 5; ctx.stroke();
+    for (let i = 0; i < 12; i++) { const an = i * Math.PI / 6; ctx.beginPath(); ctx.moveTo(Math.cos(an) * ur * .78, Math.sin(an) * ur * .78); ctx.lineTo(Math.cos(an) * ur * .88, Math.sin(an) * ur * .88); ctx.lineWidth = 3; ctx.stroke(); }
+    const sp = (t - t0) * 9;
+    ctx.lineCap = "round"; ctx.strokeStyle = C.white;
+    ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(sp / 12 - 1.57) * ur * .45, Math.sin(sp / 12 - 1.57) * ur * .45); ctx.stroke();
+    ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(sp - 1.57) * ur * .7, Math.sin(sp - 1.57) * ur * .7); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+  // Kollaps -> Lichtpunkt
+  if (collapse > 0) glow(ctx, W / 2, H / 2, 80 + collapse * 200, C.teal, collapse * .9);
+  ctx.restore();
+}
+
+// --- 5 · Die Wende: Produkt-Reveal
+function sceneTurn(ctx, t) {
+  const t0 = S.turn, out = ease(t, S.upload - .4, S.upload + .1, E.inExpo);
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  // Ringe
+  for (let i = 0; i < 3; i++) {
+    const p = ease(t, t0 + i * .12, t0 + 1.4 + i * .12, E.outCubic);
+    if (p <= 0 || p >= 1) continue;
+    ctx.beginPath(); ctx.arc(W / 2, 430, 60 + p * 900, 0, Math.PI * 2); ctx.strokeStyle = rgba(C.teal, (1 - p) * .5); ctx.lineWidth = 3; ctx.stroke();
+  }
+  glow(ctx, W / 2, 430, 420, C.teal, .25 * (1 - prog(t, t0, t0 + 2)));
+  const lp = ease(t, t0 + .05, t0 + .7, E.outBack);
+  ctx.save(); ctx.translate(W / 2, 400); ctx.scale(lp, lp); logoMark(ctx, 0, 0, 170, 1, t); ctx.restore();
+  label(ctx, "DIE LÖSUNG", W / 2, 580, C.teal, ease(t, t0 + .4, t0 + .9), 22, "center", 8);
+  kinetic(ctx, CONTENT.product, W / 2, 700, t, t0 + .45, { f: font(700, 120), align: "center", by: "char", stagger: .04, dur: .7 });
+  kinetic(ctx, "Zwei KI-Agenten. Eine aktuelle AVB.", W / 2, 790, t, t0 + 1.0, { f: font(400, 42), align: "center", color: C.mute });
+  ctx.restore();
+}
+
+// --- 6 · Produkt: Einlesen → Identifizieren → Aktualisieren → Prüfen → Ausgeben
+const WIN = { x: 110, y: 150, w: 1700, h: 860 };
+const DOCV = { x: 170, y: 262, w: 800, h: 712 };
+const RP = { x: 1020, y: 262, w: 730, h: 712 };
+const STEPS = [
+  ["Einlesen", S.upload], ["Identifizieren", S.detect], ["Aktualisieren", S.update], ["Prüfen & Bearbeiten", S.review], ["Ausgeben", S.export],
+];
+const CAPTIONS = [
+  [S.upload, "Bestehende AVB einlesen", "Word oder PDF, mit Struktur und Formatierung"],
+  [S.detect, "Agent 1 findet die betroffenen Textblöcke", "jeder Abschnitt wird gegen die GOÄ neu geprüft"],
+  [S.update, "Agent 2 formuliert sie neu", "auf Grundlage der neuen GOÄ"],
+  [S.review, "Jede Änderung prüfen und bearbeiten", "Alt und Neu im Vergleich, mit Quelle aus der GOÄ"],
+  [S.export, "Im gewünschten Format ausgeben", "Format, Schriftart und Größe frei wählbar"],
+];
+// Absatz-Geometrie im Dokument-Viewer
+const PARA_GEO = (() => {
+  let y = DOCV.y + 114; const out = [];
+  for (const p of CONTENT.paras) { const ph = 24 + p.n * 15; out.push({ ...p, title: p.h, y, h: ph }); y += ph + 12; }
+  return out;
+})();
+const HIT_T = { detect: [], update: [] };
+{ // Zeitpunkte, an denen die Scan-Linie die Treffer erreicht bzw. Agent 2 sie umschreibt
+  const s0 = S.detect + .4, s1 = S.detect + 2.6;
+  PARA_GEO.forEach(p => { if (p.hit != null) HIT_T.detect[p.hit] = lerp(s0, s1, (p.y + p.h / 2 - DOCV.y) / DOCV.h); });
+  for (let i = 0; i < 4; i++) HIT_T.update[i] = S.update + .35 + i * .7;
+}
+const scanY = t => lerp(DOCV.y, DOCV.y + DOCV.h, prog(t, S.detect + .4, S.detect + 2.6));
+// Maus im Prüfen-/Ausgabe-Schritt
+const BTN = {
+  edit: { x: RP.x + 40, y: RP.y + 620, w: 200, h: 56 },
+  ok: { x: RP.x + 260, y: RP.y + 620, w: 230, h: 56 },
+  exp: { x: RP.x + 40, y: RP.y + 610, w: 650, h: 64 },
+};
+const CUR = [
+  [S.review + .3, 1500, 1060], [S.review + 1.0, BTN.edit.x + 110, BTN.edit.y + 32],
+  [S.review + 1.5, BTN.edit.x + 110, BTN.edit.y + 32], [S.review + 1.75, RP.x + 560, RP.y + 470],
+  [S.review + 2.75, RP.x + 560, RP.y + 470], [S.review + 3.25, BTN.ok.x + 120, BTN.ok.y + 32],
+  [S.export + .3, BTN.ok.x + 120, BTN.ok.y + 32], [S.export + .8, RP.x + 210, RP.y + 175],
+  [S.export + 1.3, RP.x + 260, RP.y + 175], [S.export + 1.9, BTN.exp.x + 330, BTN.exp.y + 36],
+  [S.export + 2.6, BTN.exp.x + 330, BTN.exp.y + 36], [S.export + 3.0, 1600, 1100],
+];
+const CLICKS = [S.review + 1.15, S.review + 3.35, S.export + .85, S.export + 2.0];
+const EDIT_T = S.review + 1.8; // ab hier wird getippt
+
+function chip(ctx, x, y, text, color, a = 1, size = 20, filled = false) {
+  if (a <= 0) return 0;
+  ctx.save(); ctx.globalAlpha *= a; ctx.font = font(500, size); const w = ctx.measureText(text).width + size * 1.6;
+  rr(ctx, x, y, w, size * 1.9, size * .95); ctx.fillStyle = filled ? color : rgba(color, .14); ctx.fill();
+  if (!filled) { ctx.strokeStyle = rgba(color, .7); ctx.lineWidth = 1.5; ctx.stroke(); }
+  ctx.fillStyle = filled ? C.night : color; ctx.textBaseline = "middle"; ctx.fillText(text, x + size * .8, y + size * .97);
+  ctx.restore(); return w;
+}
+function button(ctx, b, text, color, a = 1, filled = true, hover = 0) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a;
+  rr(ctx, b.x, b.y, b.w, b.h, 14); ctx.fillStyle = filled ? mix(color, C.white, hover * .25) : rgba(color, .12 + hover * .1); ctx.fill();
+  if (!filled) { ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke(); }
+  ctx.font = font(700, 22); ctx.fillStyle = filled ? C.night : color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, b.x + b.w / 2, b.y + b.h / 2 + 1); ctx.restore();
+}
+function agentChip(ctx, x, y, n, text, color, t, a) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a;
+  rr(ctx, x, y, RP.w - 80, 84, 18); ctx.fillStyle = rgba(color, .1); ctx.fill(); ctx.strokeStyle = rgba(color, .5); ctx.lineWidth = 1.5; ctx.stroke();
+  // Agenten-Icon: pulsierender Kreis
+  const pulse = .5 + .5 * Math.sin(t * 8);
+  glow(ctx, x + 46, y + 42, 40, color, .35 + pulse * .2);
+  ctx.beginPath(); ctx.arc(x + 46, y + 42, 22, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+  ctx.fillStyle = C.night; ctx.font = font(700, 22); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(n, x + 46, y + 43);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.font = font(700, 16, "Ubuntu Mono"); ctx.letterSpacing = "3px"; ctx.fillStyle = color; ctx.fillText("AGENT " + n, x + 88, y + 34);
+  ctx.letterSpacing = "0px"; ctx.font = font(500, 24); ctx.fillStyle = C.white; ctx.fillText(text, x + 88, y + 64);
+  ctx.restore();
+}
+
+function sceneProduct(ctx, t) {
+  const inP = ease(t, S.upload - .15, S.upload + .6, E.outExpo), out = ease(t, S.value - .5, S.value, E.inExpo);
+  ctx.save(); ctx.globalAlpha = clamp(inP * 1.3) * (1 - out);
+  const sc = lerp(.9, 1, inP) * lerp(1, .94, out);
+  ctx.translate(W / 2, H / 2 + (1 - inP) * 60 - out * 40); ctx.scale(sc, sc); ctx.translate(-W / 2, -H / 2);
+
+  // Fenster
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 60; ctx.shadowOffsetY = 24;
+  rr(ctx, WIN.x, WIN.y, WIN.w, WIN.h, 24); ctx.fillStyle = C.panel; ctx.fill(); ctx.restore();
+  rr(ctx, WIN.x, WIN.y, WIN.w, WIN.h, 24); ctx.strokeStyle = rgba(C.cyan, .25); ctx.lineWidth = 1.5; ctx.stroke();
+  // Titelleiste
+  ctx.save(); rr(ctx, WIN.x, WIN.y, WIN.w, 82, 24); ctx.clip(); ctx.fillStyle = C.navy; ctx.fillRect(WIN.x, WIN.y, WIN.w, 82); ctx.restore();
+  ctx.fillStyle = C.line; ctx.fillRect(WIN.x, WIN.y + 82, WIN.w, 1.5);
+  logoMark(ctx, WIN.x + 50, WIN.y + 41, 40, 1, t);
+  ctx.font = font(700, 24); ctx.fillStyle = C.white; ctx.fillText(CONTENT.product, WIN.x + 82, WIN.y + 49);
+  // Schritt-Leiste
+  const sx0 = WIN.x + 380, sw = 262;
+  ctx.font = font(700, 18);
+  STEPS.forEach(([name, st], i) => {
+    const x = sx0 + i * sw, active = t >= st, done = i < STEPS.length - 1 && t >= STEPS[i + 1][1];
+    const ap = ease(t, st, st + .4);
+    if (i > 0) {
+      ctx.font = font(700, 18); const lx = x - sw + 38 + ctx.measureText(STEPS[i - 1][0]).width + 14, lw = x - 8 - lx;
+      ctx.fillStyle = C.line; ctx.fillRect(lx, WIN.y + 41, lw, 2); ctx.fillStyle = C.teal; ctx.fillRect(lx, WIN.y + 41, lw * ap, 2);
+    }
+    ctx.beginPath(); ctx.arc(x + 14, WIN.y + 42, 15, 0, Math.PI * 2);
+    ctx.fillStyle = done ? C.teal : active ? rgba(C.teal, .2 + .8 * ap) : C.panel2; ctx.fill();
+    ctx.strokeStyle = active ? C.teal : C.line; ctx.lineWidth = 2; ctx.stroke();
+    if (done) checkMark(ctx, x + 14, WIN.y + 42, 16, 1, C.night, 3);
+    else { ctx.font = font(700, 16); ctx.fillStyle = active ? C.night : C.mute; ctx.textAlign = "center"; ctx.fillText(String(i + 1), x + 14, WIN.y + 48); ctx.textAlign = "left"; }
+    ctx.font = font(active && !done ? 700 : 500, 18); ctx.fillStyle = active ? C.white : C.mute; ctx.fillText(name, x + 38, WIN.y + 48);
+  });
+
+  // Überschrift über dem Fenster
+  CAPTIONS.forEach(([ct, title, sub], i) => {
+    const next = CAPTIONS[i + 1] ? CAPTIONS[i + 1][0] : S.value - .3;
+    if (t < ct - .1 || t > next + .1) return;
+    const o = next - .35;
+    kinetic(ctx, title, WIN.x + 10, 100, t, ct + .05, { f: font(700, 46), stagger: .035, out: o });
+    ctx.save(); ctx.globalAlpha *= ease(t, ct + .3, ct + .7) * (1 - ease(t, o, o + .3));
+    ctx.font = font(400, 26); ctx.fillStyle = C.mute; ctx.textAlign = "right"; ctx.fillText(sub, WIN.x + WIN.w - 10, 100); ctx.restore();
+  });
+
+  // ---- Dokument-Viewer
+  const docIn = ease(t, S.upload + 1.3, S.upload + 2.4, E.outCubic);
+  const exported = ease(t, S.export + 2.15, S.export + 2.8, E.inOutCubic);
+  rr(ctx, DOCV.x - 20, DOCV.y - 20, DOCV.w + 40, DOCV.h + 40, 18); ctx.fillStyle = rgba(C.night, .55); ctx.fill();
+  if (docIn <= 0) { // leerer Viewer
+    ctx.save(); ctx.globalAlpha *= .6; ctx.font = font(400, 24); ctx.fillStyle = C.mute; ctx.textAlign = "center";
+    ctx.fillText("Noch kein Dokument geladen", DOCV.x + DOCV.w / 2, DOCV.y + DOCV.h / 2); ctx.restore();
+  } else {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(DOCV.x - 20, DOCV.y - 20, DOCV.w + 40, DOCV.h + 40); ctx.clip();
+    ctx.globalAlpha *= clamp(docIn * 2) * (1 - exported * .25);
+    ctx.translate(exported * 30, 0);
+    paper(ctx, DOCV.x, DOCV.y, DOCV.w, DOCV.h, 1, false);
+    ctx.fillStyle = C.ink; ctx.font = font(700, 26); ctx.fillText("Allgemeine Versicherungsbedingungen", DOCV.x + 44, DOCV.y + 60);
+    ctx.font = font(400, 16); ctx.fillStyle = C.inkSoft; ctx.fillText("Krankheitskostenversicherung · Teil II · Tarifbedingungen", DOCV.x + 44, DOCV.y + 86);
+    ctx.beginPath(); rr(ctx, DOCV.x, DOCV.y, DOCV.w, DOCV.h, 14); ctx.clip();
+    PARA_GEO.forEach((p, k) => {
+      const pp = clamp(docIn * 9 - k * .9);
+      if (pp <= 0) return;
+      ctx.save(); ctx.globalAlpha *= pp;
+      let hlA = 0, upd = 0;
+      if (p.hit != null) {
+        hlA = ease(t, HIT_T.detect[p.hit], HIT_T.detect[p.hit] + .35, E.outCubic);
+        upd = ease(t, HIT_T.update[p.hit], HIT_T.update[p.hit] + .55, E.inOutCubic);
+      }
+      const col = upd > 0 ? mix(C.amber, C.green, upd) : C.amber;
+      if (hlA > 0) {
+        rr(ctx, DOCV.x + 26, p.y - 8, DOCV.w - 52, p.h + 14, 8); ctx.fillStyle = rgba(col, .2 * hlA); ctx.fill();
+        ctx.fillStyle = col; ctx.globalAlpha *= hlA; ctx.fillRect(DOCV.x + 26, p.y - 8, 5, p.h + 14); ctx.globalAlpha /= hlA;
+      }
+      // Fokus beim Prüfen
+      if (p.hit === 0) {
+        const f = ease(t, S.review, S.review + .4) * (1 - ease(t, S.export, S.export + .3));
+        if (f > 0) { rr(ctx, DOCV.x + 20, p.y - 14, DOCV.w - 40, p.h + 26, 10); ctx.strokeStyle = rgba(C.teal, f); ctx.lineWidth = 3; ctx.stroke(); }
+      }
+      ctx.font = font(700, 17); ctx.fillStyle = C.ink; ctx.fillText(p.title, DOCV.x + 44, p.y + 13);
+      // Text-Zeilen: beim Umschreiben wischt eine neue Zeilenfassung herein
+      if (upd > 0 && upd < 1) {
+        const wx = DOCV.x + 44 + (DOCV.w - 88) * upd;
+        ctx.save(); ctx.beginPath(); ctx.rect(DOCV.x, p.y + 20, wx - DOCV.x, p.h); ctx.clip();
+        bars(ctx, DOCV.x + 44, p.y + 24, DOCV.w - 88, p.n, 15, 900 + k, rgba(C.green, .55), 7); ctx.restore();
+        ctx.save(); ctx.beginPath(); ctx.rect(wx, p.y + 20, DOCV.x + DOCV.w - wx, p.h); ctx.clip();
+        bars(ctx, DOCV.x + 44, p.y + 24, DOCV.w - 88, p.n, 15, 100 + k, rgba(C.amber, .55), 7); ctx.restore();
+        glow(ctx, wx, p.y + p.h / 2 + 10, 40, C.green, .6);
+      } else {
+        bars(ctx, DOCV.x + 44, p.y + 24, DOCV.w - 88, p.n, 15, upd >= 1 ? 900 + k : 100 + k, upd >= 1 ? rgba(C.green, .55) : hlA > 0 ? rgba(C.amber, .55) : C.bar, 7);
+      }
+      ctx.restore();
+    });
+    // Scan-Linie Agent 1
+    const sp = prog(t, S.detect + .4, S.detect + 2.6);
+    if (sp > 0 && sp < 1) {
+      const y = scanY(t);
+      const g = ctx.createLinearGradient(0, y - 90, 0, y); g.addColorStop(0, rgba(C.cyan, 0)); g.addColorStop(1, rgba(C.cyan, .22));
+      ctx.fillStyle = g; ctx.fillRect(DOCV.x, y - 90, DOCV.w, 90);
+      ctx.fillStyle = C.cyan; ctx.fillRect(DOCV.x - 6, y - 1.5, DOCV.w + 12, 3);
+      glow(ctx, DOCV.x + DOCV.w * (.5 + .4 * Math.sin(t * 3)), y, 70, C.cyan, .5);
+    }
+    ctx.restore();
+    // Upload-Dokument fliegt in den Viewer? -> Ausgabe-Badge
+    if (exported > 0) {
+      const bp = ease(t, S.export + 2.2, S.export + 2.6, E.outBack);
+      ctx.save(); ctx.globalAlpha *= clamp(bp);
+      const bx = DOCV.x + DOCV.w / 2, by = DOCV.y + DOCV.h / 2;
+      ctx.translate(bx, by); ctx.scale(bp, bp);
+      rr(ctx, -260, -70, 520, 140, 22); ctx.fillStyle = C.panel2; ctx.fill(); ctx.strokeStyle = C.green; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(-190, 0, 36, 0, Math.PI * 2); ctx.fillStyle = C.green; ctx.fill();
+      checkMark(ctx, -190, 0, 40, ease(t, S.export + 2.35, S.export + 2.7), C.night, 5);
+      ctx.font = font(700, 26); ctx.fillStyle = C.white; ctx.fillText("Export fertig", -130, -8);
+      ctx.font = font(400, 19); ctx.fillStyle = C.mute; ctx.fillText(CONTENT.fileOut, -130, 26);
+      ctx.restore();
+    }
+  }
+
+  // ---- Rechtes Panel (Inhalt je Schritt)
+  rr(ctx, RP.x, RP.y - 20, RP.w, RP.h + 40, 18); ctx.fillStyle = rgba(C.panel2, .6); ctx.fill();
+  const phase = (a, b) => ease(t, a, a + .35) * (1 - ease(t, b - .3, b));
+  // Schritt 1: Upload
+  {
+    const a = phase(S.upload + .2, S.detect);
+    if (a > 0) {
+      ctx.save(); ctx.globalAlpha *= a;
+      const dz = { x: RP.x + 40, y: RP.y + 30, w: RP.w - 80, h: 360 };
+      const fly = ease(t, S.upload + .5, S.upload + 1.15, E.outCubic), land = t > S.upload + 1.15;
+      rr(ctx, dz.x, dz.y, dz.w, dz.h, 20); ctx.fillStyle = rgba(C.teal, land ? .1 : .04); ctx.fill();
+      ctx.setLineDash([12, 10]); ctx.strokeStyle = rgba(C.teal, .7); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = font(500, 26); ctx.fillStyle = C.white; ctx.textAlign = "center"; ctx.fillText(land ? "AVB erkannt" : "AVB-Dokument hier ablegen", dz.x + dz.w / 2, dz.y + 300);
+      ctx.font = font(400, 19); ctx.fillStyle = C.mute; ctx.fillText(".docx  ·  .pdf", dz.x + dz.w / 2, dz.y + 332); ctx.textAlign = "left";
+      // Dokument-Icon fliegt hinein
+      const ix = lerp(RP.x + RP.w + 200, dz.x + dz.w / 2 - 70, fly), iy = lerp(RP.y - 140, dz.y + 50, fly);
+      ctx.save(); ctx.translate(ix + 70, iy + 90); ctx.rotate((1 - fly) * .4); ctx.translate(-70, -90);
+      paper(ctx, 0, 0, 140, 180, 1); rr(ctx, 0, 0, 140, 36, 10); ctx.fillStyle = C.cyan; ctx.fill(); ctx.fillRect(0, 20, 140, 16);
+      ctx.font = font(700, 18); ctx.fillStyle = C.night; ctx.fillText("AVB", 14, 26);
+      bars(ctx, 16, 58, 108, 6, 18, 4, C.bar, 7);
+      ctx.restore();
+      // Fortschritt
+      const pr = ease(t, S.upload + 1.2, S.upload + 2.2, E.inOutCubic);
+      if (t > S.upload + 1.15) {
+        const by = RP.y + 430;
+        ctx.font = font(500, 22); ctx.fillStyle = C.white; ctx.fillText(CONTENT.file, RP.x + 40, by);
+        ctx.font = font(700, 22, "Ubuntu Mono"); ctx.fillStyle = C.teal; ctx.textAlign = "right"; ctx.fillText(Math.round(pr * 100) + " %", RP.x + RP.w - 40, by); ctx.textAlign = "left";
+        rr(ctx, RP.x + 40, by + 22, RP.w - 80, 10, 5); ctx.fillStyle = C.line; ctx.fill();
+        rr(ctx, RP.x + 40, by + 22, (RP.w - 80) * pr, 10, 5); ctx.fillStyle = C.teal; ctx.fill();
+        const st = [["38", "Seiten"], [String(Math.round(CONTENT.blocksTotal * ease(t, S.upload + 1.4, S.upload + 2.3, E.outCubic))), "Textblöcke"], ["1:1", "Formatierung"]];
+        st.forEach(([v, l], i) => {
+          const p = ease(t, S.upload + 1.4 + i * .15, S.upload + 1.9 + i * .15);
+          ctx.save(); ctx.globalAlpha *= p; const x = RP.x + 40 + i * 220;
+          ctx.font = font(700, 44); ctx.fillStyle = C.white; ctx.fillText(v, x, by + 120);
+          ctx.font = font(400, 20); ctx.fillStyle = C.mute; ctx.fillText(l, x, by + 152); ctx.restore();
+        });
+      }
+      ctx.restore();
+    }
+  }
+  // Schritt 2+3: Agentenliste
+  {
+    const a = phase(S.detect + .05, S.review);
+    if (a > 0) {
+      ctx.save(); ctx.globalAlpha *= a;
+      const a2 = ease(t, S.update, S.update + .35);
+      ctx.save(); ctx.globalAlpha *= 1 - a2; agentChip(ctx, RP.x + 40, RP.y + 20, "1", "Identifiziert betroffene Textblöcke", C.cyan, t, 1); ctx.restore();
+      ctx.save(); ctx.globalAlpha *= a2; agentChip(ctx, RP.x + 40, RP.y + 20, "2", "Aktualisiert auf Basis der GOÄ neu", C.green, t, 1); ctx.restore();
+      const found = HIT_T.detect.filter(h => t >= h).length, updated = HIT_T.update.filter(h => t >= h + .55).length;
+      ctx.font = font(700, 54); ctx.fillStyle = a2 > .5 ? C.green : C.amber;
+      const big = a2 > .5 ? `${updated}/${found}` : String(found);
+      ctx.fillText(big, RP.x + 40, RP.y + 185);
+      const bw = ctx.measureText(big).width;
+      ctx.font = font(400, 24); ctx.fillStyle = C.mute;
+      ctx.fillText(a2 > .5 ? "Textblöcke aktualisiert" : `von ${CONTENT.blocksTotal} Textblöcken betroffen`, RP.x + 56 + bw, RP.y + 182);
+      CONTENT.hits.forEach((h, i) => {
+        const p = ease(t, HIT_T.detect[i], HIT_T.detect[i] + .45, E.outExpo);
+        if (p <= 0) return;
+        const u = ease(t, HIT_T.update[i] + .2, HIT_T.update[i] + .55);
+        const y = RP.y + 230 + i * 106, x = RP.x + 40 + (1 - p) * 60;
+        ctx.save(); ctx.globalAlpha *= clamp(p * 1.4);
+        const col = mix(C.amber, C.green, u);
+        rr(ctx, x, y, RP.w - 80, 90, 14); ctx.fillStyle = rgba(col, .08); ctx.fill(); ctx.strokeStyle = rgba(col, .45); ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(x + 40, y + 45, 17, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+        if (u > .5) checkMark(ctx, x + 40, y + 45, 18, (u - .5) * 2, C.night, 3);
+        else { ctx.font = font(700, 20); ctx.fillStyle = C.night; ctx.textAlign = "center"; ctx.fillText("!", x + 40, y + 52); ctx.textAlign = "left"; }
+        ctx.font = font(700, 22); ctx.fillStyle = C.white; ctx.fillText(h.ref, x + 76, y + 38);
+        ctx.font = font(400, 20); ctx.fillStyle = C.mute; ctx.fillText(h.what, x + 76, y + 68);
+        // Status-Chip
+        const lbl = u > .5 ? "aktualisiert" : t >= HIT_T.update[i] ? "wird neu formuliert …" : "betroffen";
+        ctx.font = font(500, 17); const lw = ctx.measureText(lbl).width;
+        chip(ctx, x + RP.w - 80 - lw - 50, y + 26, lbl, col, 1, 17);
+        ctx.restore();
+      });
+      ctx.restore();
+    }
+  }
+  // Schritt 4: Prüfen & Bearbeiten
+  {
+    const a = phase(S.review + .05, S.export + .1);
+    if (a > 0) {
+      const R = CONTENT.review;
+      ctx.save(); ctx.globalAlpha *= a;
+      ctx.font = font(700, 16, "Ubuntu Mono"); ctx.letterSpacing = "3px"; ctx.fillStyle = C.teal; ctx.fillText("ÄNDERUNG 1 VON 4", RP.x + 40, RP.y + 30); ctx.letterSpacing = "0px";
+      ctx.font = font(700, 26); ctx.fillStyle = C.white; ctx.fillText(R.ref, RP.x + 40, RP.y + 68);
+      // Alt
+      const bx = RP.x + 40, bw = RP.w - 80;
+      rr(ctx, bx, RP.y + 92, bw, 118, 14); ctx.fillStyle = rgba(C.amber, .07); ctx.fill(); ctx.strokeStyle = rgba(C.amber, .35); ctx.lineWidth = 1.5; ctx.stroke();
+      label(ctx, "BISHER", bx + 20, RP.y + 122, C.amber, 1, 15, "left", 3);
+      ctx.font = font(400, 21); ctx.fillStyle = rgba(C.mute, 1);
+      const oldL = wrap(ctx, R.old, bw - 40); const sp = ease(t, S.review + .4, S.review + .9, E.inOutCubic);
+      oldL.forEach((l, i) => {
+        const ly = RP.y + 156 + i * 30; ctx.fillText(l, bx + 20, ly);
+        const lw = ctx.measureText(l).width; ctx.fillStyle = rgba(C.amber, .8); ctx.fillRect(bx + 20, ly - 7, lw * clamp(sp * oldL.length - i), 2); ctx.fillStyle = C.mute;
+      });
+      // Neu (mit Bearbeitung)
+      const editing = t >= EDIT_T, approved = t >= S.review + 3.35;
+      rr(ctx, bx, RP.y + 226, bw, 150, 14); ctx.fillStyle = rgba(C.green, .08); ctx.fill();
+      ctx.strokeStyle = editing && !approved ? C.teal : rgba(C.green, .5); ctx.lineWidth = editing && !approved ? 2.5 : 1.5; ctx.stroke();
+      label(ctx, editing ? (approved ? "NEU · FREIGEGEBEN" : "NEU · WIRD BEARBEITET") : "NEU", bx + 20, RP.y + 256, approved ? C.green : editing ? C.teal : C.green, 1, 15, "left", 3);
+      const newText = R.neu + (editing ? typed(R.edit, t, EDIT_T + .1, 30) : ".");
+      ctx.font = font(500, 21); ctx.fillStyle = C.white;
+      const nl = wrap(ctx, newText, bw - 40);
+      nl.forEach((l, i) => ctx.fillText(l, bx + 20, RP.y + 290 + i * 30));
+      if (editing && !approved && Math.floor(t * 3) % 2 === 0) {
+        const last = nl[nl.length - 1], cx = bx + 20 + ctx.measureText(last).width + 2;
+        ctx.fillStyle = C.teal; ctx.fillRect(cx, RP.y + 290 + (nl.length - 1) * 30 - 20, 2.5, 26);
+      }
+      // Quelle
+      const qp = ease(t, S.review + .6, S.review + 1.1);
+      ctx.save(); ctx.globalAlpha *= qp;
+      rr(ctx, bx, RP.y + 392, bw, 108, 14); ctx.fillStyle = rgba(C.indigo, .1); ctx.fill(); ctx.strokeStyle = rgba(C.indigo, .5); ctx.lineWidth = 1.5; ctx.stroke();
+      label(ctx, "QUELLE", bx + 20, RP.y + 422, C.indigo, 1, 15, "left", 3);
+      ctx.font = font(700, 20); ctx.fillStyle = C.white; ctx.fillText(R.source, bx + 110, RP.y + 422);
+      ctx.font = font(300, 20); ctx.fillStyle = C.mute; ctx.fillText(R.quote, bx + 20, RP.y + 460);
+      ctx.font = font(500, 17); ctx.fillStyle = C.indigo; ctx.fillText("Passage öffnen  →", bx + 20, RP.y + 488);
+      ctx.restore();
+      // Buttons
+      const hv = (b) => { const [mx, my] = cursorAt(CUR, t); return mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h ? 1 : 0; };
+      button(ctx, BTN.edit, "✎  Bearbeiten", C.teal, 1, false, hv(BTN.edit));
+      button(ctx, BTN.ok, approved ? "✓  Freigegeben" : "Übernehmen", C.green, 1, true, hv(BTN.ok));
+      ctx.font = font(400, 19); ctx.fillStyle = C.mute; ctx.fillText("Weiter  →", RP.x + RP.w - 130, BTN.ok.y + 36);
+      ctx.restore();
+    }
+  }
+  // Schritt 5: Ausgabe
+  {
+    const a = phase(S.export + .15, S.value + 1);
+    if (a > 0) {
+      ctx.save(); ctx.globalAlpha *= a;
+      ctx.font = font(700, 16, "Ubuntu Mono"); ctx.letterSpacing = "3px"; ctx.fillStyle = C.teal; ctx.fillText("AUSGABE", RP.x + 40, RP.y + 30); ctx.letterSpacing = "0px";
+      const rows = [["Format", null], ["Schriftart", "Wie Original"], ["Schriftgröße", "11 pt"], ["Layout", "Original beibehalten"]];
+      const pdfSel = t >= S.export + .85 && t < S.export + 1.3 ? 0 : 0; // Auswahl bleibt DOCX
+      rows.forEach(([k, v], i) => {
+        const p = ease(t, S.export + .2 + i * .1, S.export + .6 + i * .1);
+        const y = RP.y + 70 + i * 130 + (1 - p) * 20;
+        ctx.save(); ctx.globalAlpha *= p;
+        ctx.font = font(500, 20); ctx.fillStyle = C.mute; ctx.fillText(k, RP.x + 40, y + 20);
+        if (k === "Format") {
+          ["DOCX", "PDF"].forEach((f, j) => {
+            const sel = j === 0 ? 1 : 0, b = { x: RP.x + 40 + j * 170, y: y + 40, w: 150, h: 58 };
+            rr(ctx, b.x, b.y, b.w, b.h, 12); ctx.fillStyle = sel ? rgba(C.teal, .9) : rgba(C.line, .6); ctx.fill();
+            ctx.font = font(700, 22); ctx.fillStyle = sel ? C.night : C.white; ctx.textAlign = "center"; ctx.fillText(f, b.x + b.w / 2, b.y + 37); ctx.textAlign = "left";
+          });
+          ctx.font = font(400, 19); ctx.fillStyle = C.teal; ctx.fillText("✓ gleiches Format wie das Original", RP.x + 390, y + 76);
+        } else if (k === "Layout") {
+          rr(ctx, RP.x + 40, y + 40, RP.w - 80, 58, 12); ctx.fillStyle = rgba(C.line, .6); ctx.fill();
+          ctx.font = font(500, 21); ctx.fillStyle = C.white; ctx.fillText(v, RP.x + 62, y + 77);
+          rr(ctx, RP.x + RP.w - 140, y + 54, 64, 30, 15); ctx.fillStyle = C.teal; ctx.fill();
+          ctx.beginPath(); ctx.arc(RP.x + RP.w - 91, y + 69, 11, 0, Math.PI * 2); ctx.fillStyle = C.white; ctx.fill();
+        } else {
+          rr(ctx, RP.x + 40, y + 40, RP.w - 80, 58, 12); ctx.fillStyle = rgba(C.line, .6); ctx.fill();
+          ctx.font = font(500, 21); ctx.fillStyle = C.white; ctx.fillText(v, RP.x + 62, y + 77);
+          ctx.strokeStyle = C.mute; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(RP.x + RP.w - 82, y + 63); ctx.lineTo(RP.x + RP.w - 72, y + 73); ctx.lineTo(RP.x + RP.w - 62, y + 63); ctx.stroke();
+        }
+        ctx.restore();
+      });
+      void pdfSel;
+      const done = t >= S.export + 2.0, [mx, my] = cursorAt(CUR, t);
+      const hov = mx > BTN.exp.x && mx < BTN.exp.x + BTN.exp.w && my > BTN.exp.y && my < BTN.exp.y + BTN.exp.h ? 1 : 0;
+      button(ctx, BTN.exp, done ? "✓  Exportiert" : "Dokument exportieren", done ? C.green : C.teal, ease(t, S.export + .6, S.export + 1), true, hov);
+      ctx.restore();
+    }
+  }
+  // Mauszeiger
+  const ca = ease(t, S.review + .3, S.review + .6) * (1 - ease(t, S.export + 2.7, S.export + 3));
+  const [mx, my] = cursorAt(CUR, t);
+  pointer(ctx, mx, my, pressAt(CLICKS, t), ca);
+  ctx.restore();
+}
+
+// --- 7 · Mehrwert
+function sceneValue(ctx, t) {
+  const t0 = S.value, out = ease(t, S.end - .45, S.end, E.inExpo);
+  ctx.save(); ctx.globalAlpha = 1 - out; ctx.translate(0, -out * 50);
+  label(ctx, "DER MEHRWERT", 260, 270, C.teal, ease(t, t0 + .1, t0 + .6), 22, "left", 8);
+  const icons = [
+    (x, y, p) => { ctx.strokeStyle = C.night; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(x, y, 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 10); ctx.moveTo(x, y); ctx.lineTo(x + 8, y + 4); ctx.stroke(); },
+    (x, y, p) => { ctx.strokeStyle = C.night; ctx.lineWidth = 4.5; ctx.beginPath(); ctx.ellipse(x, y, 22, 13, 0, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 6 * p, 0, Math.PI * 2); ctx.fillStyle = C.night; ctx.fill(); },
+    (x, y, p) => checkMark(ctx, x, y, 32, p, C.night, 5),
+  ];
+  CONTENT.values.forEach(([h, s], i) => {
+    const ti = t0 + .3 + i * .5, p = ease(t, ti, ti + .7, E.outExpo);
+    if (p <= 0) return;
+    const y = 400 + i * 170;
+    ctx.save(); ctx.globalAlpha *= clamp(p * 1.5);
+    const r = 46 * E.outBack(prog(t, ti, ti + .5));
+    ctx.beginPath(); ctx.arc(300, y - 18, r, 0, Math.PI * 2); ctx.fillStyle = [C.teal, C.cyan, C.green][i]; ctx.fill();
+    glow(ctx, 300, y - 18, 110, [C.teal, C.cyan, C.green][i], .25);
+    icons[i](300, y - 18, ease(t, ti + .2, ti + .8));
+    ctx.restore();
+    kinetic(ctx, h, 390, y, t, ti + .05, { f: font(700, 60), stagger: .05 });
+    ctx.save(); ctx.globalAlpha *= ease(t, ti + .35, ti + .8); ctx.font = font(400, 28); ctx.fillStyle = C.mute; ctx.fillText(s, 392, y + 46); ctx.restore();
+  });
+  ctx.restore();
+}
+
+// --- 8 · Endcard
+const IMPACT2 = S.end + .1;
+function sceneEnd(ctx, t) {
+  const t0 = S.end;
+  glow(ctx, W / 2, 470, 600, C.teal, .16 * ease(t, t0, t0 + 1));
+  const lp = ease(t, t0 + .05, t0 + .7, E.outBack);
+  ctx.save(); ctx.translate(W / 2, 360); ctx.scale(lp, lp); logoMark(ctx, 0, 0, 150, 1, t); ctx.restore();
+  kinetic(ctx, CONTENT.product, W / 2, 580, t, t0 + .25, { f: font(700, 130), align: "center", by: "char", stagger: .04, dur: .8 });
+  ctx.save(); ctx.globalAlpha *= ease(t, t0 + .7, t0 + 1.2);
+  ctx.font = font(300, 56); ctx.textAlign = "center";
+  const a = "GOÄ neu. ", b = "AVB aktuell.";
+  const wa = ctx.measureText(a).width, wb = ctx.measureText(b).width, x0 = W / 2 - (wa + wb) / 2;
+  ctx.textAlign = "left"; ctx.fillStyle = C.white; ctx.fillText(a, x0, 680); ctx.fillStyle = C.teal; ctx.font = font(500, 56); ctx.fillText(b, x0 + wa, 680);
+  ctx.restore();
+  const lw = 520 * ease(t, t0 + 1, t0 + 1.8, E.inOutCubic);
+  ctx.fillStyle = rgba(C.teal, .6); ctx.fillRect(W / 2 - lw / 2, 735, lw, 2);
+  label(ctx, "EINLESEN · IDENTIFIZIEREN · AKTUALISIEREN · PRÜFEN · AUSGEBEN", W / 2, 800, C.mute, ease(t, t0 + 1.3, t0 + 1.9), 20, "center", 4);
+  ctx.save(); ctx.globalAlpha *= ease(t, t0 + 1.8, t0 + 2.4); ctx.font = font(400, 28); ctx.fillStyle = C.mute; ctx.textAlign = "center";
+  ctx.fillText("Bereit für die Umstellung, bevor die neue GOÄ gilt.", W / 2, 880); ctx.restore();
+}
+
+// ================================================================= COMPOSITOR
+const SCENES = [
+  [0, S.change, sceneIntro], [S.change - .05, S.avb, sceneChange], [S.avb - .05, S.manual + .45, sceneAVB],
+  [S.manual - .05, S.turn + .05, sceneManual], [S.turn - .05, S.upload + .15, sceneTurn],
+  [S.upload - .2, S.value + .05, sceneProduct], [S.value - .05, S.end, sceneValue], [S.end - .05, DURATION + 1, sceneEnd],
+];
+const stage = document.getElementById("stage");
+const main = stage.getContext("2d");
+
+const GRAIN = (() => {
+  const tiles = [];
+  for (let k = 0; k < 6; k++) {
+    const c = document.createElement("canvas"); c.width = c.height = 256;
+    const g = c.getContext("2d"), d = g.createImageData(256, 256), r = mulberry32(1000 + k);
+    for (let i = 0; i < d.data.length; i += 4) { const v = r() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    g.putImageData(d, 0, 0); tiles.push(c);
+  }
+  return tiles;
+})();
+let grainPatterns = null;
+const FLASHES = [[IMPACT1, .3], [S.turn, .6], [IMPACT2, .35]];
+function post(ctx, t) {
+  for (const [ti, amt] of FLASHES) { const f = 1 - ease(t, ti, ti + .25, E.outCubic); if (t >= ti && f > 0) { ctx.fillStyle = `rgba(255,255,255,${f * amt})`; ctx.fillRect(0, 0, W, H); } }
+  const hd = Math.hypot(W, H) / 2, v = ctx.createRadialGradient(W / 2, H / 2, hd * .6, W / 2, H / 2, hd * 1.08);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(2,4,16,.4)"); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  if (!grainPatterns) grainPatterns = GRAIN.map(c => main.createPattern(c, "repeat"));
+  const fr = Math.floor(t * FPS / 2);
+  ctx.save(); ctx.globalAlpha = .035; ctx.globalCompositeOperation = "overlay"; ctx.fillStyle = grainPatterns[fr % GRAIN.length];
+  ctx.translate((fr * 37) % 256, (fr * 91) % 256); ctx.fillRect(-256, -256, W + 512, H + 512); ctx.restore();
+  // Fade in/out
+  const fade = Math.max(1 - prog(t, 0, .4), prog(t, DURATION - .6, DURATION));
+  if (fade > 0) { ctx.fillStyle = `rgba(7,11,26,${fade})`; ctx.fillRect(0, 0, W, H); }
+}
+function shake(t) {
+  let dx = 0, dy = 0;
+  for (const [ti, amp] of [[IMPACT1, 10], [S.turn, 16], [IMPACT2, 8]]) {
+    const k = 1 - prog(t, ti, ti + .32);
+    if (t >= ti && k > 0) { dx += Math.sin(t * 95) * amp * k * k; dy += Math.cos(t * 78) * amp * k * k; }
+  }
+  return [dx, dy];
+}
+function draw(t) {
+  t = clamp(t, 0, DURATION - 1e-6);
+  const ctx = main;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; ctx.letterSpacing = "0px";
+  background(ctx, t);
+  const [dx, dy] = shake(t);
+  ctx.save(); ctx.translate(dx, dy);
+  for (const [a, b, fn] of SCENES) if (t >= a && t < b) { ctx.save(); fn(ctx, t); ctx.restore(); }
+  ctx.restore();
+  post(ctx, t);
+}
+
+// ================================================================= AUDIO (Web Audio, komplett synthetisiert)
+function renderAudio(sampleRate = 48000) {
+  const len = Math.ceil(DURATION * sampleRate);
+  const ac = new OfflineAudioContext(2, len, sampleRate);
+  const rnd = mulberry32(2026);
+  const noiseBuf = (() => { const b = ac.createBuffer(2, sampleRate * 2, sampleRate); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = rnd() * 2 - 1; } return b; })();
+  const master = ac.createGain(); master.gain.value = .9;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 3; comp.attack.value = .006; comp.release.value = .18;
+  const lim = ac.createDynamicsCompressor(); lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .001; lim.release.value = .08;
+  master.connect(comp); comp.connect(lim); lim.connect(ac.destination);
+  master.gain.setValueAtTime(.9, DURATION - 1.2); master.gain.linearRampToValueAtTime(.0001, DURATION);
+  const rev = ac.createConvolver();
+  rev.buffer = (() => { const n = sampleRate * 2.6, b = ac.createBuffer(2, n, sampleRate); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (rnd() * 2 - 1) * Math.pow(1 - i / n, 3.2); } return b; })();
+  const revGain = ac.createGain(); revGain.gain.value = .32; rev.connect(revGain); revGain.connect(master);
+  const send = (node, amt) => { const g = ac.createGain(); g.gain.value = amt; node.connect(g); g.connect(rev); };
+  const out = (node, gain = 1, pan = 0, rv = 0) => { const g = ac.createGain(); g.gain.value = gain; const p = ac.createStereoPanner(); p.pan.value = pan; node.connect(g); g.connect(p); p.connect(master); if (rv) send(p, rv); return g; };
+  const env = (param, t, a, d, peak = 1) => { param.setValueAtTime(.0001, t); param.exponentialRampToValueAtTime(Math.max(peak, .0002), t + a); param.exponentialRampToValueAtTime(.0001, t + a + d); };
+  const noise = (t, dur) => { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.start(t, rnd() * 1.5); s.stop(t + dur + .05); return s; };
+  const osc = (type, f, t, dur) => { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.start(t); o.stop(t + dur + .05); return o; };
+
+  function kick(t, g = .8) {
+    const o = osc("sine", 160, t, .45); o.frequency.exponentialRampToValueAtTime(42, t + .12);
+    const a = ac.createGain(); env(a.gain, t, .002, .38); o.connect(a); out(a, g);
+  }
+  function hat(t, g = .1, pan = .2) { const n = noise(t, .06), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 8500; const a = ac.createGain(); env(a.gain, t, .001, .045); n.connect(hp); hp.connect(a); out(a, g, pan); }
+  function whoosh(tc, dur = .5, g = .5, up = true, pan0 = -.7, pan1 = .7) {
+    const t = Math.max(0, tc - dur * .6), n = noise(t, dur), bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(up ? 300 : 5000, t); bp.frequency.exponentialRampToValueAtTime(up ? 5200 : 350, t + dur);
+    const a = ac.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(1, tc); a.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    const p = ac.createStereoPanner(); p.pan.setValueAtTime(pan0, t); p.pan.linearRampToValueAtTime(pan1, t + dur);
+    n.connect(bp); bp.connect(a); a.connect(p); const gg = ac.createGain(); gg.gain.value = g; p.connect(gg); gg.connect(master); send(gg, .25);
+  }
+  function impact(t, g = 1) {
+    const o = osc("sine", 90, t, 1.6); o.frequency.exponentialRampToValueAtTime(30, t + 1.2);
+    const a = ac.createGain(); env(a.gain, t, .003, 1.4); o.connect(a); out(a, g * .95);
+    const n = noise(t, 1.0), lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(3000, t); lp.frequency.exponentialRampToValueAtTime(180, t + .8);
+    const na = ac.createGain(); env(na.gain, t, .002, .9); n.connect(lp); lp.connect(na); out(na, g * .45, 0, .9);
+  }
+  function riser(t0, t1, g = .35) {
+    const n = noise(t0, t1 - t0), bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 2.5;
+    bp.frequency.setValueAtTime(250, t0); bp.frequency.exponentialRampToValueAtTime(7000, t1);
+    const a = ac.createGain(); a.gain.setValueAtTime(.0001, t0); a.gain.exponentialRampToValueAtTime(1, t1 - .01); a.gain.linearRampToValueAtTime(.0001, t1);
+    n.connect(bp); bp.connect(a); out(a, g, 0, .3);
+  }
+  function tick(t, f = 2400, g = .2, pan = 0, dur = .03) { const o = osc("triangle", f, t, dur); const a = ac.createGain(); env(a.gain, t, .001, dur); o.connect(a); out(a, g, pan, .15); }
+  function click(t, g = .3, pan = 0, f = 3200) { const n = noise(t, .02), bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 3; const a = ac.createGain(); env(a.gain, t, .0008, .012); n.connect(bp); bp.connect(a); out(a, g, pan, .1); }
+  function blip(t, f, g = .3, pan = 0) { const o = osc("sine", f, t, .3), m = osc("sine", f * 2, t, .3), mg = ac.createGain(); mg.gain.value = f * .5; m.connect(mg); mg.connect(o.frequency); const a = ac.createGain(); env(a.gain, t, .002, .22); o.connect(a); out(a, g, pan, .35); }
+  function pop(t, f = 520, g = .3, pan = 0) { const o = osc("sine", f * 1.8, t, .12); o.frequency.exponentialRampToValueAtTime(f, t + .06); const a = ac.createGain(); env(a.gain, t, .002, .09); o.connect(a); out(a, g, pan, .2); }
+  function warn(t, g = .14, pan = 0) { [0, .09].forEach((d, i) => { const o = osc("square", i ? 330 : 392, t + d, .08); const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1400; const a = ac.createGain(); env(a.gain, t + d, .003, .07); o.connect(lp); lp.connect(a); out(a, g, pan, .2); }); }
+  function typeClicks(t0, n, cps, g = .06) { for (let i = 0; i < n; i++) click(t0 + i / cps + (rnd() - .5) * .01, g * (.6 + rnd() * .4), .3, 2600 + rnd() * 1800); }
+  function chord(t0, t1, freqs, g = .05, cutoff = 1100) {
+    freqs.forEach((f, k) => [-7, 7].forEach(cents => {
+      const o = osc("sawtooth", f, t0, t1 - t0 + .8); o.detune.value = cents;
+      const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(cutoff * .5, t0); lp.frequency.linearRampToValueAtTime(cutoff, t1); lp.Q.value = .7;
+      const a = ac.createGain(); a.gain.setValueAtTime(.0001, t0); a.gain.exponentialRampToValueAtTime(1, t0 + .3); a.gain.setValueAtTime(1, t1); a.gain.exponentialRampToValueAtTime(.0001, t1 + .7);
+      o.connect(lp); lp.connect(a); out(a, g, (k % 2 ? .35 : -.35) * (cents > 0 ? 1 : -1), .5);
+    }));
+  }
+  function bass(t, f, g = .25, dur = .22) {
+    const o = osc("triangle", f, t, dur), o2 = osc("sine", f, t, dur), lp = ac.createBiquadFilter(); lp.type = "lowpass";
+    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(200, t + dur);
+    const a = ac.createGain(); env(a.gain, t, .004, dur); o.connect(lp); o2.connect(lp); lp.connect(a); out(a, g);
+  }
+  function shimmer(t, g = .07) { [1760, 2637, 3520, 2093].forEach((f, i) => { const tt = t + i * .06, o = osc("sine", f, tt, .9), a = ac.createGain(); env(a.gain, tt, .01, .8); o.connect(a); out(a, g, i % 2 ? .5 : -.5, .8); }); }
+
+  // ---- Musik: Problemteil dunkel (a-Moll, Puls), ab der Wende hell (C-Dur, voller Beat)
+  const N = { A1: 55, A2: 110, C3: 130.81, E3: 164.81, G3: 196, A3: 220, B3: 246.94, C4: 261.63, D3: 146.83, F2: 87.31, F3: 174.61, G2: 98, C2: 65.41, D4: 293.66, E4: 329.63 };
+  const DARK = [[[N.A2, N.C3, N.E3, N.G3], N.A1], [[N.F2 * 2, N.A2, N.C3, N.E3], N.F2], [[N.D3, N.F3, N.A3, N.C4], N.D3 / 2], [[N.E3, N.G3, N.B3, N.D4], N.E3 / 2]];
+  const BRIGHT = [[[N.C3, N.E3, N.G3, N.B3], N.C2], [[N.A2, N.C3, N.E3, N.G3], N.A1], [[N.F3, N.A3, N.C4, N.E4], N.F2], [[N.G3, N.B3, N.D4, N.F3 * 2], N.G2]];
+  chord(0, IMPACT1, [N.A2, N.E3], .03, 500);
+  for (let i = 0, t0 = IMPACT1; t0 < S.turn - .5; i++, t0 += 2) {
+    const [notes, root] = DARK[i % 4], t1 = Math.min(t0 + 2, S.turn - .5);
+    chord(t0, t1, notes, .02, 800 + (i % 4) * 80);
+    for (let b = t0; b < t1 - 1e-6; b += BEAT) bass(b, root, .14, .3);
+  }
+  for (let b = IMPACT1; b < S.turn - 1; b += BEAT * 2) kick(b, .32); // gedämpfter Herzschlag
+  for (let b = S.manual; b < S.turn - 1; b += BEAT / 2) tick(b, 2000, .03, .5, .015); // Uhr
+  for (let i = 0, t0 = S.turn; t0 < S.end - 1e-6; i++, t0 += 2) {
+    const [notes, root] = BRIGHT[i % 4], t1 = Math.min(t0 + 2, S.end);
+    chord(t0, t1, notes, .02, 1400 + (i % 6) * 100);
+    for (let b = t0; b < t1 - 1e-6; b += BEAT / 2) if (Math.abs((b - t0) % BEAT) > 1e-6) bass(b, root, .18);
+  }
+  for (let b = S.turn + 1; b < S.end - 1; b += BEAT) { kick(b, .5); hat(b + BEAT / 2, .08, .25); }
+  chord(S.end, DURATION - .5, [N.C3, N.E3, N.G3, N.D4, N.E4], .026, 1800);
+  bass(S.end, N.C2, .3, 1.8);
+
+  // ---- SFX
+  riser(.1, IMPACT1, .22);
+  [1.0, 1.5].forEach(t => pop(t, 380, .22));
+  impact(IMPACT1, .8); shimmer(IMPACT1 + .1, .05);
+  for (let i = 0; i < 30; i++) click(.3 + i / 45, .05, -.2, 3000); // Schreibmaschine
+  whoosh(S.change, .5, .4, true, .6, -.4);
+  [0, 1, 2].forEach(i => pop(S.change + .95 + i * .45, 440 + i * 90, .26, -.5 + i * .5));
+  whoosh(S.avb, .5, .4, false, -.5, .5);
+  [0, 1, 2].forEach(i => warn(S.avb + 1.0 + i * .45, .12, .3));
+  whoosh(S.manual, .4, .35, true, 0, 0);
+  for (let i = 0; i < 24; i++) tick(S.manual + .25 + i * .03, 1400 + i * 30, .05, -.6 + i * .05, .02);
+  riser(S.turn - 1.4, S.turn, .4);
+  impact(S.turn, 1.1); shimmer(S.turn + .15, .08);
+  // Produkt
+  whoosh(S.upload, .5, .35, true, 0, 0);
+  pop(S.upload + 1.15, 300, .35); click(S.upload + 1.15, .3);
+  for (let i = 0; i < 12; i++) tick(S.upload + 1.25 + i * .08, 1800 + i * 60, .04, .3, .015);
+  blip(S.upload + 2.2, 1046.5, .18, .3);
+  STEPS.forEach(([, st], i) => i && blip(st, 784 + i * 60, .12, -.4));
+  riser(S.detect + .3, S.detect + 2.6, .12);
+  HIT_T.detect.forEach((h, i) => { warn(h, .1, -.3); pop(h + .02, 520 + i * 40, .18, .4); });
+  const pent = [659.25, 783.99, 880, 1046.5];
+  HIT_T.update.forEach((h, i) => { whoosh(h + .3, .5, .12, true, -.4, .2); blip(h + .55, pent[i], .22, .3); });
+  CLICKS.forEach(c => click(c, .45, .2, 2600));
+  typeClicks(EDIT_T + .1, CONTENT.review.edit.length, 30, .07);
+  blip(S.review + 3.4, 1174.66, .18, .2); blip(S.review + 3.48, 1567.98, .14, .2);
+  whoosh(S.export + 2.2, .5, .3, true, -.3, .6);
+  [1046.5, 1318.5, 1568].forEach((f, i) => blip(S.export + 2.35 + i * .08, f, .16, .2));
+  whoosh(S.value, .5, .35, false, .5, -.5);
+  CONTENT.values.forEach((_, i) => pop(S.value + .3 + i * .5, 330 + i * 110, .3, -.4 + i * .4));
+  riser(S.end - 1.2, IMPACT2, .3);
+  impact(IMPACT2, .9); shimmer(S.end + .3, .07);
+  return ac.startRendering();
+}
+
+// ================================================================= Bootstrap
+const params = new URLSearchParams(location.search);
+const RENDER_MODE = params.has("render");
+document.body.classList.add(RENDER_MODE ? "render" : "preview");
+window.DURATION = DURATION;
+window.__ready = (async () => {
+  for (const w of [300, 400, 500, 700]) await document.fonts.load(font(w, 100));
+  await document.fonts.load(font(400, 20, "Ubuntu Mono")); await document.fonts.load(font(700, 20, "Ubuntu Mono"));
+  await document.fonts.ready;
+  draw(RENDER_MODE ? 0 : 1.2);
+  return true;
+})();
+window.__draw = (t) => draw(t);
+window.__audio = async () => {
+  const buf = await renderAudio(48000);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1), o = new Float32Array(L.length * 2);
+  for (let i = 0; i < L.length; i++) { o[i * 2] = L[i]; o[i * 2 + 1] = R[i]; }
+  const bytes = new Uint8Array(o.buffer); let s = ""; const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(s);
+};
+if (!RENDER_MODE) {
+  const btn = document.getElementById("play"), scrub = document.getElementById("scrub"), tl = document.getElementById("time");
+  scrub.max = DURATION;
+  let actx = null, buffer = null, src = null, startAt = 0, playing = false;
+  const show = t => { scrub.value = t; tl.textContent = t.toFixed(2).padStart(5, "0"); draw(t); };
+  scrub.addEventListener("input", () => { stop(); show(+scrub.value); });
+  function stop() { if (src) { try { src.stop(); } catch (e) {} src = null; } playing = false; btn.textContent = "▶ Play"; }
+  async function play() {
+    actx = actx || new AudioContext(); if (actx.state !== "running") await actx.resume();
+    btn.textContent = "… Ton wird erzeugt"; buffer = buffer || await renderAudio(actx.sampleRate);
+    let off = +scrub.value; if (off >= DURATION - .05) off = 0;
+    src = actx.createBufferSource(); src.buffer = buffer; src.connect(actx.destination);
+    startAt = actx.currentTime - off; src.start(0, off); playing = true; btn.textContent = "❚❚ Pause";
+    const loop = () => { if (!playing) return; const t = actx.currentTime - startAt; if (t >= DURATION) { show(DURATION - .001); stop(); return; } show(t); requestAnimationFrame(loop); };
+    loop();
+  }
+  btn.addEventListener("click", () => playing ? stop() : play());
+}
+</script>
+</body>
+</html>

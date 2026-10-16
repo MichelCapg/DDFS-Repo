@@ -1,5 +1,5 @@
-// Exportiert ddfs-motion.html Frame für Frame als MP4 (H.264 + AAC).
-// Nutzung: node motion/render.mjs [--fps 60] [--crf 18] [--out output/DDFS_Team-Intro_28s.mp4]
+// Exportiert eine Motion-Seite (Standard: ddfs-motion.html) Frame für Frame als MP4 (H.264 + AAC).
+// Nutzung: node motion/render.mjs [--page avb-motion.html] [--fps 60] [--crf 18] [--out output/DDFS_Team-Intro_28s.mp4]
 //          [--still 14.9 --out output/poster.png]
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -16,8 +16,9 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
 const FPS = +(args.fps || 60);
 const CRF = String(args.crf || 18);
 const FORMAT = args.format === "vertical" ? "vertical" : "landscape"; // --format vertical -> 1080×1350 (4:5)
+const PAGE = args.page || "ddfs-motion.html";
 const OUT = resolve(args.out || join(ROOT, "..", "output", FORMAT === "vertical" ? "DDFS_Team-Intro_28s_LinkedIn_4x5.mp4" : "DDFS_Team-Intro_28s.mp4"));
-const TMP = resolve(ROOT, "..", ".render-tmp-" + (args.format === "vertical" ? "vertical" : "landscape"));
+const TMP = resolve(ROOT, "..", ".render-tmp-" + PAGE.replace(/\W+/g, "-") + "-" + FORMAT);
 
 const MIME = { ".html": "text/html", ".woff2": "font/woff2", ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp" };
 const server = createServer(async (req, res) => {
@@ -27,7 +28,7 @@ const server = createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 await new Promise(r => server.listen(0, "127.0.0.1", r));
-const url = `http://127.0.0.1:${server.address().port}/ddfs-motion.html?render=1&format=${FORMAT}`;
+const url = `http://127.0.0.1:${server.address().port}/${PAGE}?render=1&format=${FORMAT}`;
 
 const run = (cmd, argv, opts = {}) => new Promise((res, rej) => {
   const p = spawn(cmd, argv, { stdio: ["pipe", "pipe", "pipe"], ...opts });
