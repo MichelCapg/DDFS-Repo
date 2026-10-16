@@ -60,6 +60,7 @@ Produktvideo für den **AVB-Agent**: Er passt Allgemeine Versicherungsbedingunge
 | Datei | Inhalt |
 | --- | --- |
 | `output/AVB-Agent_Erklaervideo_47s.mp4` | Finales Video, 1920×1080, 60 fps, H.264 + AAC (-14 LUFS) |
+| `output/AVB-Agent_poster.jpg` | Standbild der Endcard
 | `motion/avb-motion.html` | Quelle: Animation (Canvas) und Sounddesign (Web Audio), mit Live-Vorschau |
 | `motion/AVB-Agent_Prompt.md` | Storyline-Prompt, aus dem das Video gebaut wurde |
 
