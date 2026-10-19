@@ -41,6 +41,9 @@
    renderAudio() synthetisiert den Ton aus denselben Cue-Zeiten.
    ===================================================================== */
 const W = 1920, H = 1080, FPS = 60;
+// ?format=vertical -> LinkedIn-Hochformat 4:5 (1080×1350): Querformat mittig, Kernaussagen oben, Marke unten
+const VERT = new URLSearchParams(location.search).get("format") === "vertical";
+const VW = 1080, VH = 1350;
 
 // ---------------------------------------------------------------- Timeline (Sekunden, real)
 const S = {
@@ -940,7 +943,10 @@ const SCENES = [
   [S.upload - .2, S.value + .05, sceneProduct], [S.value - .05, S.end, sceneValue], [S.end - .05, DURATION + 1, sceneEnd],
 ];
 const stage = document.getElementById("stage");
-const main = stage.getContext("2d");
+if (VERT) { stage.width = VW; stage.height = VH; document.documentElement.style.setProperty("--ar", "4 / 5"); }
+const land = VERT ? Object.assign(document.createElement("canvas"), { width: W, height: H }) : stage;
+const main = land.getContext("2d");
+const vctx = VERT ? stage.getContext("2d") : null;
 
 const GRAIN = (() => {
   const tiles = [];
@@ -984,6 +990,62 @@ function draw(t) {
   for (const [a, b, fn] of SCENES) if (t >= a && t < b) { ctx.save(); fn(ctx, t); ctx.restore(); }
   ctx.restore();
   post(ctx, t);
+  if (VERT) composeVertical(vctx, t);
+}
+
+// ================================================================= HOCHFORMAT (LinkedIn 4:5)
+const VCROP = { x: 60, w: 1800 };                   // seitlicher Beschnitt des Querformats
+const VS = VW / VCROP.w, VVH = H * VS, VY = (VH - VVH) / 2; // Videofläche 1080×648, mittig
+const CHAPTERS = [
+  [0, S.avb, "AUSGANGSLAGE", ["Die GOÄ wird", "grundlegend neu gefasst."], C.teal],
+  [S.avb, S.turn, "DAS PROBLEM", ["Alle AVB müssen angepasst", "werden – bisher von Hand."], C.amber],
+  [S.turn, S.value, "DIE LÖSUNG", ["Zwei KI-Agenten bringen", "Ihre AVB auf GOÄ neu."], C.teal],
+  [S.value, S.end, "DER MEHRWERT", ["Schneller. Transparent.", "Unter Ihrer Kontrolle."], C.cyan],
+  [S.end, DURATION + 1, "SCHON HEUTE NUTZBAR", ["Unser Prototyp ist fertig", "und bereits nutzbar."], C.green],
+];
+function composeVertical(ctx, t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.letterSpacing = "0px";
+  const g = ctx.createLinearGradient(0, 0, 0, VH); g.addColorStop(0, "#0B1330"); g.addColorStop(.5, C.night); g.addColorStop(1, "#0A1530");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+  ctx.strokeStyle = rgba(C.cyan, .04); ctx.lineWidth = 1;
+  for (let x = 0; x <= VW; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, VH); ctx.stroke(); }
+  for (let y = 0; y <= VH; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VW, y); ctx.stroke(); }
+  // Video
+  ctx.drawImage(land, VCROP.x, 0, VCROP.w, H, 0, VY, VW, VVH);
+  ctx.fillStyle = rgba(C.teal, .35); ctx.fillRect(0, VY - 1, VW, 2); ctx.fillRect(0, VY + VVH - 1, VW, 2);
+  // Kapitel-Überschrift oben
+  const X = 72;
+  CHAPTERS.forEach(([a, b, kicker, lines, col], i) => {
+    if (t < a - .05 || t > b + .05) return;
+    const t0 = a + (i ? .15 : .5), out = i < CHAPTERS.length - 1 ? b - .4 : null;
+    const ka = ease(t, t0, t0 + .5) * (out ? 1 - ease(t, out, out + .3) : 1);
+    if (ka > 0) { ctx.save(); ctx.globalAlpha = ka; ctx.fillStyle = col; ctx.fillRect(X, 96, 36 * ka, 4); ctx.restore(); }
+    label(ctx, kicker, X + 52, 104, col, ka, 24, "left", 6);
+    lines.forEach((l, k) => kinetic(ctx, l, X, 196 + k * 72, t, t0 + .08 + k * .1, { f: font(700, 58), stagger: .04, out: out == null ? null : out + k * .04, color: k === 1 && i === 4 ? C.green : C.white }));
+  });
+  // Unten: Kapitel-Fortschritt
+  const py = VY + VVH + 70, pw = VW - 2 * X, segs = CHAPTERS.length - 1;
+  for (let i = 0; i < segs; i++) {
+    const [a, b, , , col] = CHAPTERS[i], x = X + i * (pw / segs) + (i ? 6 : 0), w = pw / segs - (i ? 6 : 0) - (i < segs - 1 ? 6 : 0);
+    rr(ctx, x, py, w, 6, 3); ctx.fillStyle = rgba(C.mute, .25); ctx.fill();
+    const p = i === segs - 1 ? prog(t, a, S.end) : prog(t, a, b);
+    if (p > 0) { rr(ctx, x, py, w * p, 6, 3); ctx.fillStyle = col; ctx.fill(); }
+    ctx.font = font(500, 19); ctx.fillStyle = t >= a ? C.white : C.mute; ctx.fillText(["Ausgangslage", "Problem", "Lösung", "Mehrwert"][i], x, py + 40);
+  }
+  // Marke + Prototyp-Badge
+  const by = VH - 120;
+  logoMark(ctx, X + 34, by, 68, 1, t);
+  ctx.font = font(700, 42); ctx.fillStyle = C.white; ctx.textBaseline = "middle"; ctx.fillText(CONTENT.product, X + 88, by + 2); ctx.textBaseline = "alphabetic";
+  const bt = "Prototyp live & nutzbar";
+  ctx.font = font(500, 24); const bw = ctx.measureText(bt).width + 76, bx = VW - X - bw;
+  rr(ctx, bx, by - 30, bw, 60, 30); ctx.fillStyle = rgba(C.green, .14); ctx.fill(); ctx.strokeStyle = C.green; ctx.lineWidth = 2; ctx.stroke();
+  const pulse = .5 + .5 * Math.sin(t * 5);
+  glow(ctx, bx + 32, by, 26, C.green, .3 + pulse * .4);
+  ctx.beginPath(); ctx.arc(bx + 32, by, 8, 0, Math.PI * 2); ctx.fillStyle = C.green; ctx.fill();
+  ctx.fillStyle = C.white; ctx.textBaseline = "middle"; ctx.fillText(bt, bx + 54, by + 1); ctx.textBaseline = "alphabetic";
+  // Ein- und Ausblenden
+  const fade = Math.max(1 - prog(t, 0, .4), prog(t, DURATION - .6, DURATION));
+  if (fade > 0) { ctx.fillStyle = `rgba(7,11,26,${fade})`; ctx.fillRect(0, 0, VW, VH); }
 }
 
 // ================================================================= AUDIO (Web Audio, komplett synthetisiert)

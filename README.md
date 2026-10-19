@@ -60,6 +60,7 @@ Produktvideo für den **AVB-Agent**: Er passt Allgemeine Versicherungsbedingunge
 | Datei | Inhalt |
 | --- | --- |
 | `output/AVB-Agent_Erklaervideo_49s.mp4` | Finales Video, 1920×1080, 60 fps, H.264 + AAC (-14 LUFS) |
+| `output/AVB-Agent_Erklaervideo_49s_LinkedIn_4x5.mp4` | LinkedIn-Hochformat 1080×1350 (4:5): Video mittig, Kernaussage je Kapitel oben, Fortschritt, Marke und Badge „Prototyp live & nutzbar“ unten |
 | `output/AVB-Agent_poster.jpg` | Standbild der Endcard
 | `motion/avb-motion.html` | Quelle: Animation (Canvas) und Sounddesign (Web Audio), mit Live-Vorschau |
 | `motion/AVB-Agent_Prompt.md` | Storyline-Prompt, aus dem das Video gebaut wurde |
@@ -78,6 +79,7 @@ Produktvideo für den **AVB-Agent**: Er passt Allgemeine Versicherungsbedingunge
 ```bash
 npm run preview:avb   # Live-Vorschau unter http://localhost:8080/avb-motion.html
 npm run render:avb    # finales MP4 → output/AVB-Agent_Erklaervideo_49s.mp4
+npm run render:avb:vertical   # LinkedIn 4:5 → output/AVB-Agent_Erklaervideo_49s_LinkedIn_4x5.mp4 (Vorschau: avb-motion.html?format=vertical)
 ```
 
 Texte, Produktname, Beispielklauseln und Quellenangabe stehen im Objekt `CONTENT`, die Szenenzeiten im Objekt `S` am Anfang von `motion/avb-motion.html`. Die Beispielklauseln sind generische Illustrationen und zitieren kein echtes Bedingungswerk.
