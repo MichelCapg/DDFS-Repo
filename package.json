@@ -9,7 +9,7 @@
     "render:vertical": "node motion/render.mjs --format vertical",
     "render:draft": "node motion/render.mjs --fps 30 --crf 24 --out output/DDFS_Team-Intro_draft.mp4",
     "preview": "npx --yes http-server motion -p 8080 -c-1 -o /ddfs-motion.html",
-    "render:avb": "node motion/render.mjs --page avb-motion.html --out output/AVB-Agent_Erklaervideo_47s.mp4",
+    "render:avb": "node motion/render.mjs --page avb-motion.html --out output/AVB-Agent_Erklaervideo_49s.mp4",
     "preview:avb": "npx --yes http-server motion -p 8080 -c-1 -o /avb-motion.html"
   },
   "devDependencies": {

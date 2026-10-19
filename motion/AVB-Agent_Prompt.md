@@ -1,10 +1,10 @@
-# Prompt: Motion-Graphics-Video „AVB-Agent“ (ca. 47 s)
+# Prompt: Motion-Graphics-Video „AVB-Agent“ (ca. 49 s)
 
 > Selbst geschriebener Arbeits-Prompt, aus dem `motion/avb-motion.html` gebaut wird.
 
 **Rolle:** Du bist Motion Designer und Erklärvideo-Autor für B2B-Software im Versicherungsumfeld.
 
-**Ziel:** Ein 40–50 s langes, tonloses verständliches Motion-Graphics-Video (1920×1080, 60 fps, mit synthetischem Sounddesign), das Entscheider in privaten Krankenversicherungen (PKV) in drei Akten überzeugt: **Problem → Lösung → Mehrwert**.
+**Ziel:** Ein ca. 49 s langes, tonloses verständliches Motion-Graphics-Video (1920×1080, 60 fps, mit synthetischem Sounddesign), das Entscheider in privaten Krankenversicherungen (PKV) in drei Akten überzeugt: **Problem → Lösung → Mehrwert**.
 
 **Harte Regeln**
 - **Kein Kunden-Branding.** Keine Logos, Farben (kein ERGO-Rot), Namen, Tarifnamen oder Dokumenttitel einer echten Versicherung. Neutrale, eigene Farbwelt (Nachtblau, Türkis, Bernstein für „betroffen“, Grün für „aktualisiert“).
@@ -25,6 +25,8 @@
    4. *Prüfen & Bearbeiten:* Alt/Neu-Vergleich, Quelle aus der GOÄ neu, Nutzer klickt „Bearbeiten“, ergänzt Text, gibt frei.
    5. *Ausgeben:* Format (DOCX/PDF), Schriftart, Schriftgröße, Layout wie Original, Export.
 7. **Mehrwert (40–43,5 s):** Weniger manueller Aufwand · jede Änderung transparent und mit Quelle belegt · volle Kontrolle.
-8. **Endcard (43,5–47 s):** „AVB-Agent – GOÄ neu. AVB aktuell.“
+8. **Endcard (43,5–49 s):** „AVB-Agent – GOÄ neu. AVB aktuell.“ und als Schlussbotschaft: **„Funktionsfähiger Prototyp – bereits nutzbar“** („Kein Konzept auf Folien: Der Agent läuft schon heute.“).
+
+**Prototyp-Botschaft:** Es gibt bereits einen fertigen, nutzbaren Prototypen. Das zeigt das Video doppelt: als pulsierendes Badge „Live-Prototyp“ in der Titelleiste der Produktansicht und als zentrale Aussage auf der Endcard.
 
 **Stil:** ruhige, präzise Bewegungen (Expo-/Cubic-Easing), Masken-Typo, Problemteil gedämpft und kühl, ab der Wende hell und türkis. Sound: dunkles Pad im Problemteil, ab der Wende Beat mit 120 BPM, UI-Klicks und Blips auf jeder Interaktion.

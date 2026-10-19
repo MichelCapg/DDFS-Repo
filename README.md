@@ -53,13 +53,13 @@ Schriften: Ubuntu Font Family, Ubuntu Font Licence 1.0 (`motion/assets/fonts/UBU
 
 ---
 
-# AVB-Agent · Erklärvideo (47 s Motion Graphics)
+# AVB-Agent · Erklärvideo (49 s Motion Graphics)
 
 Produktvideo für den **AVB-Agent**: Er passt Allgemeine Versicherungsbedingungen (AVB) der PKV an die neue GOÄ an. Das Video enthält **bewusst kein Kunden-Branding**, also keine Logos, Farben oder Namen einer echten Versicherung, und nutzt eine eigene, neutrale Farbwelt.
 
 | Datei | Inhalt |
 | --- | --- |
-| `output/AVB-Agent_Erklaervideo_47s.mp4` | Finales Video, 1920×1080, 60 fps, H.264 + AAC (-14 LUFS) |
+| `output/AVB-Agent_Erklaervideo_49s.mp4` | Finales Video, 1920×1080, 60 fps, H.264 + AAC (-14 LUFS) |
 | `output/AVB-Agent_poster.jpg` | Standbild der Endcard
 | `motion/avb-motion.html` | Quelle: Animation (Canvas) und Sounddesign (Web Audio), mit Live-Vorschau |
 | `motion/AVB-Agent_Prompt.md` | Storyline-Prompt, aus dem das Video gebaut wurde |
@@ -71,13 +71,13 @@ Produktvideo für den **AVB-Agent**: Er passt Allgemeine Versicherungsbedingunge
 | 10,5–16 s | Die Folge | AVB-Dokument mit veralteten GOÄ-Verweisen: Jede PKV muss ihre AVB anpassen |
 | 16–21 s | Das Problem | Dutzende Dokumente, tickende Uhr: heute Klausel für Klausel von Hand |
 | 21–23,5 s | Die Wende | AVB-Agent: zwei KI-Agenten, eine aktuelle AVB |
-| 23,5–40 s | Produkt | 1 Einlesen · 2 Agent 1 identifiziert betroffene Textblöcke · 3 Agent 2 formuliert neu · 4 Alt/Neu prüfen, GOÄ-Quelle, bearbeiten, freigeben · 5 Ausgabe in Format, Schrift und Größe der Wahl |
+| 23,5–40 s | Produkt (Badge „Live-Prototyp“ in der Titelleiste) | 1 Einlesen · 2 Agent 1 identifiziert betroffene Textblöcke · 3 Agent 2 formuliert neu · 4 Alt/Neu prüfen, GOÄ-Quelle, bearbeiten, freigeben · 5 Ausgabe in Format, Schrift und Größe der Wahl |
 | 40–43,5 s | Mehrwert | Weniger manueller Aufwand · volle Transparenz · volle Kontrolle |
-| 43,5–47 s | Endcard | „AVB-Agent – GOÄ neu. AVB aktuell.“ |
+| 43,5–49 s | Endcard | „AVB-Agent – GOÄ neu. AVB aktuell.“ + **„Funktionsfähiger Prototyp – bereits nutzbar“** |
 
 ```bash
 npm run preview:avb   # Live-Vorschau unter http://localhost:8080/avb-motion.html
-npm run render:avb    # finales MP4 → output/AVB-Agent_Erklaervideo_47s.mp4
+npm run render:avb    # finales MP4 → output/AVB-Agent_Erklaervideo_49s.mp4
 ```
 
 Texte, Produktname, Beispielklauseln und Quellenangabe stehen im Objekt `CONTENT`, die Szenenzeiten im Objekt `S` am Anfang von `motion/avb-motion.html`. Die Beispielklauseln sind generische Illustrationen und zitieren kein echtes Bedingungswerk.
